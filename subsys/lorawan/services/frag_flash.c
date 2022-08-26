@@ -36,14 +36,14 @@ int frag_flash_init(void)
 	return err;
 }
 
-int8_t frag_flash_write(uint32_t addr, uint8_t *data, uint32_t size)
+int frag_flash_write(uint32_t addr, const uint8_t *data, uint32_t size)
 {
 	LOG_DBG("Writing %u bytes to addr 0x%x", size, addr);
 
 	return flash_area_write(fa, addr, data, size);
 }
 
-int8_t frag_flash_read(uint32_t addr, uint8_t *data, uint32_t size)
+int frag_flash_read(uint32_t addr, uint8_t *data, uint32_t size)
 {
 	return flash_area_read(fa, addr, data, size);
 }

@@ -30,7 +30,7 @@ int frag_flash_init(void);
  *
  * @returns 0 for success, otherwise negative error code
  */
-int8_t frag_flash_write(uint32_t addr, uint8_t *data, uint32_t size);
+int frag_flash_write(uint32_t addr, const uint8_t *data, uint32_t size);
 
 /**
  * Read back data from flash
@@ -43,7 +43,7 @@ int8_t frag_flash_write(uint32_t addr, uint8_t *data, uint32_t size);
  *
  * @returns 0 for success, otherwise negative error code
  */
-int8_t frag_flash_read(uint32_t addr, uint8_t *data, uint32_t size);
+int frag_flash_read(uint32_t addr, uint8_t *data, uint32_t size);
 
 /**
  * Finalize flashing after sufficient fragments have been received.

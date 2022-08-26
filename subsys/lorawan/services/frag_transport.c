@@ -10,10 +10,10 @@
  */
 
 #include "frag_flash.h"
+#include "frag_dec.h"
 #include "lorawan_services.h"
 
 #include <LoRaMac.h>
-#include <FragDecoder.h>
 #include <zephyr/lorawan/lorawan.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/random/rand32.h>
@@ -22,6 +22,18 @@ LOG_MODULE_REGISTER(lorawan_frag_transport, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);
 
 /* maximum length of frag_transport answers */
 #define MAX_FRAG_TRANSPORT_ANS_LEN 5
+
+#define FRAG_MAX_NB	(CONFIG_LORAWAN_FRAG_TRANSPORT_IMAGE_SIZE / \
+			CONFIG_LORAWAN_FRAG_TRANSPORT_MIN_FRAG_SIZE + 1U)
+#define FRAG_MAX_SIZE	(CONFIG_LORAWAN_FRAG_TRANSPORT_MAX_FRAG_SIZE)
+#define FRAG_TOLERANCE	(FRAG_MAX_NB * CONFIG_LORAWAN_FRAG_TRANSPORT_MAX_REDUNDANCY / 100U)
+
+#define DEC_BUF_SIZE	(((BM_UNIT - 1) * 5 +				\
+			FRAG_MAX_NB * 2 +				\
+			FRAG_TOLERANCE * (FRAG_TOLERANCE + 5) / 2) /	\
+			BM_UNIT * sizeof(bm_t) +			\
+			FRAG_MAX_SIZE * 2 + 7 * 4) // alignment
+
 
 enum frag_transport_commands {
 	FRAG_TRANSPORT_CMD_PKG_VERSION         = 0x00,
@@ -67,16 +79,15 @@ struct frag_transport_context {
 	uint8_t padding;
 	/** Application-specific descriptor for the data block, e.g. firmware version */
 	uint32_t descriptor;
-
-	/* variables required for FragDecoder.h */
-	FragDecoderStatus_t decoder_status;
-	FragDecoderCallbacks_t decoder_callbacks;
-	int32_t decoder_process_status;
 };
 
 static struct frag_transport_context ctx[LORAMAC_MAX_MC_CTX];
 
 static struct k_work_q *workq;
+
+/* ToDo: protect with sempahore. Only one frag session may be ongoing. */
+frag_dec_t decoder;
+static uint8_t dec_buf[DEC_BUF_SIZE];
 
 /* Callback for notification of finished firmware transfer */
 static void (*finished_cb)(void);
@@ -115,28 +126,28 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 			LOG_DBG("FragSessionStatusReq index %d, participants: %u",
 				index, participants);
 
-			ctx[index].decoder_status = FragDecoderGetStatus();
+			if (participants == 1 || decoder.lost_frm_count > 0) {
 
-			if (participants == 1 || ctx[index].decoder_status.FragNbLost > 0) {
+				/* TODO: double-check all below parameters */
 
 				uint8_t missing_frag = CLAMP(ctx[index].nb_frag -
-					ctx[index].decoder_status.FragNbRx, 0, 255);
+					decoder.lost_frm_count, 0, 255);
 
 				tx_buf[tx_pos++] = FRAG_TRANSPORT_CMD_FRAG_STATUS;
-				tx_buf[tx_pos++] = ctx[index].decoder_status.FragNbRx & 0xFF;
+				tx_buf[tx_pos++] = decoder.lost_frm_count & 0xFF;
 				tx_buf[tx_pos++] = (index << 6) |
-					((ctx[index].decoder_status.FragNbRx >> 8) & 0x3F);
+					((decoder.lost_frm_count >> 8) & 0x3F);
 				tx_buf[tx_pos++] = missing_frag;
-				tx_buf[tx_pos++] = ctx[index].decoder_status.MatrixError & 0x01;
+				tx_buf[tx_pos++] = 0x00; //ctx[index].decoder_status.MatrixError & 0x01;
 
 				ans_delay = sys_rand32_get() %
 					(1U << (ctx[index].block_ack_delay + 4));
 
-				LOG_DBG("FragSessionStatusAns index %d, FragNbRx: %u, "
-					"FragNbLost: %u, MissingFrag: %u, status: %u, delay: %d",
-					index, ctx[index].decoder_status.FragNbRx,
-					ctx[index].decoder_status.FragNbLost, missing_frag,
-					ctx[index].decoder_status.MatrixError, ans_delay);
+				//LOG_DBG("FragSessionStatusAns index %d, FragNbRx: %u, "
+				//	"FragNbLost: %u, MissingFrag: %u, status: %u, delay: %d",
+				//	index, ctx[index].decoder_status.FragNbRx,
+				//	ctx[index].decoder_status.FragNbLost, missing_frag,
+				//	ctx[index].decoder_status.MatrixError, ans_delay);
 			}
 			break;
 		}
@@ -177,9 +188,7 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 			}
 
 			if (ctx[index].nb_frag > FRAG_MAX_NB ||
-					ctx[index].frag_size > FRAG_MAX_SIZE ||
-					ctx[index].nb_frag * ctx[index].frag_size >
-					FragDecoderGetMaxFileSize()) {
+			    ctx[index].frag_size > FRAG_MAX_SIZE) {
 				/* Not enough memory */
 				status |= 1U << 1;
 			}
@@ -192,23 +201,16 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 			/* Descriptor not used: Ignore Wrong Descriptor error */
 
 			if ((status & 0x1F) == 0) {
-				/*
-				 * Assign callbacks after initialization to prevent the FragDecoder
-				 * from writing byte-wise 0xFF to the entire flash. Instead, erase
-				 * flash properly with own implementation.
-				 */
-				ctx[index].decoder_callbacks.FragDecoderWrite = NULL;
-				ctx[index].decoder_callbacks.FragDecoderRead = NULL;
-
-				FragDecoderInit(ctx[index].nb_frag, ctx[index].frag_size,
-						&ctx[index].decoder_callbacks);
-
-				ctx[index].decoder_callbacks.FragDecoderWrite = frag_flash_write;
-				ctx[index].decoder_callbacks.FragDecoderRead = frag_flash_read;
-				ctx[index].is_active = true;
-
-				frag_flash_init();
-				ctx[index].decoder_process_status = FRAG_SESSION_ONGOING;
+				decoder.cfg.nb = ctx[index].nb_frag;
+				decoder.cfg.size = ctx[index].frag_size;
+				if (frag_dec_init(&decoder) < 0) {
+					/* Not enough memory */
+					status |= 1U << 1;
+					LOG_ERR("dec_buf not large enough.");
+				} else {
+					frag_flash_init();
+					ctx[index].is_active = true;
+				}
 			}
 
 			tx_buf[tx_pos++] = FRAG_TRANSPORT_CMD_FRAG_SESSION_SETUP;
@@ -247,18 +249,18 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 			uint16_t frag_counter = frag_index_n & 0x3FFF;
 			uint8_t index = (frag_index_n >> 14) & 0x03;
 
-			LOG_DBG("DataFragment %u of %u (session index: %u)",
-				frag_counter, ctx[index].nb_frag, index);
+			if (!ctx[index].is_active) {
+				LOG_ERR("DataFragment session %d inactive", index);
+				break;
+			}
 
-			if (ctx[index].decoder_process_status == FRAG_SESSION_ONGOING) {
-				ctx[index].decoder_process_status =
-					FragDecoderProcess(frag_counter,
-							   (uint8_t *)&rx_buf[rx_pos]);
-				ctx[index].decoder_status = FragDecoderGetStatus();
+			int dec_status = frag_dec(&decoder, frag_counter, &rx_buf[rx_pos],
+						  ctx[index].frag_size);
 
-				LOG_DBG("FragDecoder process status: %d",
-					ctx[index].decoder_process_status);
-			} else if (ctx[index].decoder_process_status >= 0) {
+			LOG_DBG("DataFragment %u of %u, index: %u, decoder status: %d",
+				frag_counter, ctx[index].nb_frag, index, dec_status);
+
+			if (dec_status >= 0) {
 				/* Positive status corresponds to number of lost (but recovered)
 				 * fragments. Value >= 0 means the upgrade is done.
 				 */
@@ -293,10 +295,11 @@ int lorawan_frag_transport_run(void (*transport_finished_cb)(void))
 	workq = lorawan_services_get_work_queue();
 	finished_cb = transport_finished_cb;
 
-	/* initialize non-zero static variables */
-	for (int i = 0; i < ARRAY_SIZE(ctx); i++) {
-		ctx[i].decoder_process_status = FRAG_SESSION_NOT_STARTED;
-	}
+	decoder.cfg.dt = dec_buf;
+	decoder.cfg.maxlen = sizeof(dec_buf);
+	decoder.cfg.tolerence = FRAG_TOLERANCE;
+	decoder.cfg.frd_func = frag_flash_read;
+	decoder.cfg.fwr_func = frag_flash_write;
 
 	lorawan_register_downlink_callback(&downlink_cb);
 
