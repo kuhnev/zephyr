@@ -207,7 +207,7 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 				ctx[index].decoder_callbacks.FragDecoderRead = frag_flash_read;
 				ctx[index].is_active = true;
 
-				frag_flash_init();
+				frag_flash_init(ctx[index].frag_size);
 				ctx[index].decoder_process_status = FRAG_SESSION_ONGOING;
 			}
 
@@ -251,6 +251,13 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 				frag_counter, ctx[index].nb_frag, index);
 
 			if (ctx[index].decoder_process_status == FRAG_SESSION_ONGOING) {
+				if (frag_counter > ctx[index].nb_frag) {
+					/* Additional fragments have to be cached in RAM
+					 * for recovery algorithm.
+					 */
+					frag_flash_use_cache();
+				}
+
 				ctx[index].decoder_process_status =
 					FragDecoderProcess(frag_counter,
 							   (uint8_t *)&rx_buf[rx_pos]);
@@ -267,6 +274,9 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 				if (finished_cb != NULL) {
 					finished_cb();
 				}
+
+				/* avoid processing further fragments */
+				ctx[index].decoder_process_status = FRAG_SESSION_NOT_STARTED;
 			}
 
 			rx_pos += ctx[index].frag_size;
