@@ -290,6 +290,68 @@ enum lorawan_datarate lorawan_get_min_datarate(void);
 void lorawan_get_payload_sizes(uint8_t *max_next_payload_size,
 			       uint8_t *max_payload_size);
 
+#ifdef CONFIG_LORAWAN_APP_CLOCK_SYNC
+
+/**
+ * @brief Run Application Layer Clock Synchronization service
+ *
+ * This service sends out its current time in a regular interval (configurable
+ * via Kconfig) and receives a correction offset from the application server if
+ * the clock deviation is considered too large.
+ *
+ * Clock synchronization is required for firmware upgrades over multicast
+ * sessions, but can also be used independent of a FUOTA process.
+ *
+ * @return 0 if successful, negative errno otherwise.
+ */
+int lorawan_clock_sync_run(void);
+
+/**
+ * @brief Retrieve the current synchronized time
+ *
+ * This function uses the GPS epoch format, as used in all LoRaWAN services.
+ *
+ * The GPS epoch started on 1980-01-06T00:00:00Z, but has since diverged
+ * from UTC, as it does not consider corrections like leap seconds.
+ *
+ * @param gps_time Synchronized time in GPS epoch format truncated to 32-bit.
+ *
+ * @return 0 if successful, -EAGAIN if the clock is not yet synchronized.
+ */
+int lorawan_clock_sync_get(uint32_t *gps_time);
+
+#endif /* CONFIG_LORAWAN_APP_CLOCK_SYNC */
+
+#ifdef CONFIG_LORAWAN_FRAG_TRANSPORT
+
+/**
+ * @brief Run Fragmented Data Block Transport service
+ *
+ * This service receives fragmented data (usually firmware images) and
+ * stores them in the image-1 flash partition.
+ *
+ * After all fragments have been received, the provided callback is invoked.
+ *
+ * @param transport_finished_cb Callback for notification of finished data transfer.
+ */
+int lorawan_frag_transport_run(void (*transport_finished_cb)(void));
+
+#endif /* CONFIG_LORAWAN_FRAG_TRANSPORT */
+
+#ifdef CONFIG_LORAWAN_REMOTE_MULTICAST
+
+/**
+ * @brief Run Remote Multicast Setup service
+ *
+ * This service is responsible for multicast session key exchange and setting
+ * up a class C session. The keys are stored in the non-volatile memory.
+ *
+ * @return 0 if successful, negative errno otherwise.
+ */
+int lorawan_remote_multicast_run(void);
+
+#endif /* CONFIG_LORAWAN_REMOTE_MULTICAST */
+
 #ifdef __cplusplus
 }
 #endif
