@@ -15,12 +15,14 @@
  *
  * This function mass-erases the flash partition and may take a while to return.
  *
+ * @param frag_size Fragment size used for this session
+ *
  * @returns 0 for success, otherwise negative error code
  */
-int frag_flash_init(void);
+int frag_flash_init(uint32_t frag_size);
 
 /**
- * Write received data fragment to flash
+ * Write received data fragment to flash.
  *
  * This function is called by FragDecoder from LoRaMAC-node stack.
  *
@@ -33,7 +35,7 @@ int frag_flash_init(void);
 int frag_flash_write(uint32_t addr, const uint8_t *data, uint32_t size);
 
 /**
- * Read back data from flash
+ * Read back data from flash.
  *
  * This function is called by FragDecoder from LoRaMAC-node stack.
  *
@@ -46,7 +48,19 @@ int frag_flash_write(uint32_t addr, const uint8_t *data, uint32_t size);
 int frag_flash_read(uint32_t addr, uint8_t *data, uint32_t size);
 
 /**
+ * Start caching fragments in RAM.
+ *
+ * Coded/redundant fragments may be overwritten with future fragments,
+ * so we have to cache them in RAM instead of flash.
+ *
+ * This function must be called once all uncoded fragments have been received.
+ */
+void frag_flash_use_cache(void);
+
+/**
  * Finalize flashing after sufficient fragments have been received.
+ *
+ * This call will also write cached fragments to flash.
  *
  * After this call the new firmware is ready to be checked and booted.
  */

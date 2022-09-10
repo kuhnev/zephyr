@@ -267,6 +267,13 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 			LOG_DBG("DataFragment %u of %u, index: %u, decoder status: %d",
 				frag_counter, ctx[index].nb_frag, index, dec_status);
 
+			if (frag_counter > ctx[index].nb_frag) {
+				/* Additional fragments have to be cached in RAM
+				* for recovery algorithm.
+				*/
+				frag_flash_use_cache();
+			}
+
 			if (dec_status >= 0) {
 				/* Positive status corresponds to number of lost (but recovered)
 				 * fragments. Value >= 0 means the upgrade is done.
