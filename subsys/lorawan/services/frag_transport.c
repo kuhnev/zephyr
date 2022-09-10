@@ -254,6 +254,13 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 				break;
 			}
 
+			if (decoder.sta == FRAG_DEC_STA_DONE)
+			{
+				LOG_INF("Ignoring DataFragment %u of %u, index: %u, decoder already DONE",
+					frag_counter, ctx[index].nb_frag, index);
+				break;
+			}
+
 			int dec_status = frag_dec(&decoder, frag_counter, &rx_buf[rx_pos],
 						  ctx[index].frag_size);
 
