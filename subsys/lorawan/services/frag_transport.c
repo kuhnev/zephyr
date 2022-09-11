@@ -203,7 +203,7 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 					status |= 1U << 1;
 					LOG_ERR("dec_buf not large enough.");
 				} else {
-					frag_flash_init();
+					frag_flash_init(ctx[index].frag_size);
 					ctx[index].is_active = true;
 				}
 			}
