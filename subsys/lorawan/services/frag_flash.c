@@ -7,7 +7,7 @@
 
 #include "frag_flash.h"
 
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/storage/flash_map.h>
@@ -21,7 +21,7 @@ struct frag_cache_entry {
 	uint8_t data[FRAG_MAX_SIZE];
 };
 
-static struct frag_cache_entry frag_cache[FRAG_MAX_REDUNDANCY];
+static struct frag_cache_entry frag_cache[FRAG_TOLERANCE];
 static uint32_t frag_size;
 static int cached_frags;
 static bool use_cache;
@@ -62,6 +62,10 @@ int frag_flash_write(uint32_t addr, const uint8_t *data, uint32_t size)
 		LOG_DBG("Writing %u bytes to addr 0x%x", size, addr);
 
 		err = flash_area_write(fa, addr, data, size);
+
+		if (err) {
+			LOG_ERR("Write to addr: 0x%x failed\r\n", addr);
+		}
 	} else {
 		LOG_DBG("Caching %u bytes for addr 0x%x", size, addr);
 
@@ -115,7 +119,10 @@ void frag_flash_finish(void)
 
 	for (int i = 0; i < cached_frags; i++) {
 		LOG_DBG("Writing %u bytes to addr 0x%x", frag_size, frag_cache[i].addr);
-		flash_area_write(fa, frag_cache[i].addr, frag_cache[i].data, frag_size);
+		err = flash_area_write(fa, frag_cache[i].addr, frag_cache[i].data, frag_size);
+		if (err) {
+			LOG_ERR("Write to addr: 0x%x failed\r\n", frag_cache[i].addr);
+		}
 	}
 
 	flash_area_close(fa);

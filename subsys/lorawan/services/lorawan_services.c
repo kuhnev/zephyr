@@ -7,7 +7,7 @@
 
 #include "lorawan_services.h"
 
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(lorawan_services, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);

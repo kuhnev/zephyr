@@ -10,6 +10,11 @@
 
 #include <stdint.h>
 
+#define FRAG_MAX_NB	(CONFIG_LORAWAN_FRAG_TRANSPORT_IMAGE_SIZE / \
+			CONFIG_LORAWAN_FRAG_TRANSPORT_MIN_FRAG_SIZE + 1U)
+#define FRAG_MAX_SIZE	(CONFIG_LORAWAN_FRAG_TRANSPORT_MAX_FRAG_SIZE)
+#define FRAG_TOLERANCE	(FRAG_MAX_NB * CONFIG_LORAWAN_FRAG_TRANSPORT_MAX_REDUNDANCY / 100U)
+
 /**
  * Initialize flash driver and prepare partition for new firmware image.
  *

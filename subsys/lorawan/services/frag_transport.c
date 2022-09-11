@@ -23,11 +23,6 @@ LOG_MODULE_REGISTER(lorawan_frag_transport, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);
 /* maximum length of frag_transport answers */
 #define MAX_FRAG_TRANSPORT_ANS_LEN 5
 
-#define FRAG_MAX_NB	(CONFIG_LORAWAN_FRAG_TRANSPORT_IMAGE_SIZE / \
-			CONFIG_LORAWAN_FRAG_TRANSPORT_MIN_FRAG_SIZE + 1U)
-#define FRAG_MAX_SIZE	(CONFIG_LORAWAN_FRAG_TRANSPORT_MAX_FRAG_SIZE)
-#define FRAG_TOLERANCE	(FRAG_MAX_NB * CONFIG_LORAWAN_FRAG_TRANSPORT_MAX_REDUNDANCY / 100U)
-
 #define DEC_BUF_SIZE	(((BM_UNIT - 1) * 5 +				\
 			FRAG_MAX_NB * 2 +				\
 			FRAG_TOLERANCE * (FRAG_TOLERANCE + 5) / 2) /	\
@@ -261,18 +256,19 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 				break;
 			}
 
-			int dec_status = frag_dec(&decoder, frag_counter, &rx_buf[rx_pos],
-						  ctx[index].frag_size);
-
-			LOG_DBG("DataFragment %u of %u, index: %u, decoder status: %d",
-				frag_counter, ctx[index].nb_frag, index, dec_status);
-
 			if (frag_counter > ctx[index].nb_frag) {
 				/* Additional fragments have to be cached in RAM
 				* for recovery algorithm.
 				*/
 				frag_flash_use_cache();
 			}
+
+			int dec_status = frag_dec(&decoder, frag_counter, &rx_buf[rx_pos],
+						  ctx[index].frag_size);
+
+			printk("DataFragment %u of %u, index: %u, decoder status: %d\r\n",
+				frag_counter, ctx[index].nb_frag, index, dec_status);
+
 
 			if (dec_status >= 0) {
 				/* Positive status corresponds to number of lost (but recovered)

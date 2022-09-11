@@ -234,6 +234,16 @@ int lorawan_send(uint8_t port, uint8_t *data, uint8_t len, enum lorawan_message_
  */
 int lorawan_set_class(enum lorawan_class dev_class);
 
+
+/**
+ * @brief Get the current device class
+ * 
+ * Query the current device class.
+ *
+ * @return Current device class
+ */
+enum lorawan_class lorawan_get_class(void);
+
 /**
  * @brief Set the number of tries used for transmissions
  *

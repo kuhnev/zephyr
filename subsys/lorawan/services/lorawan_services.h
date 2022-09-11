@@ -8,7 +8,7 @@
 #ifndef ZEPHYR_SUBSYS_LORAWAN_SERVICES_LORAWAN_SERVICES_H_
 #define ZEPHYR_SUBSYS_LORAWAN_SERVICES_LORAWAN_SERVICES_H_
 
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/lorawan/lorawan.h>
 
 /**

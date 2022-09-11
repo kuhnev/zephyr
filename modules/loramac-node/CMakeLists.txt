@@ -30,8 +30,6 @@ if(${CONFIG_HAS_SEMTECH_LORAMAC})
   zephyr_library_include_directories(
     ${ZEPHYR_LORAMAC_NODE_MODULE_DIR}/src/mac
     ${ZEPHYR_LORAMAC_NODE_MODULE_DIR}/src/mac/region
-    # required for FUOTA FrageDecoder.h
-    ${ZEPHYR_LORAMAC_NODE_MODULE_DIR}/src/apps/LoRaMac/common/LmHandler/packages
   )
 endif()
 

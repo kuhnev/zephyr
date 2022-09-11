@@ -9,7 +9,7 @@
 
 #include <zephyr/device.h>
 #include <zephyr/lorawan/lorawan.h>
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(lorawan_fuota_sample, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);
@@ -23,6 +23,17 @@ LOG_MODULE_REGISTER(lorawan_fuota_sample, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);
 #define DELAY K_SECONDS(120)
 
 char data[] = {'h', 'e', 'l', 'l', 'o', 'w', 'o', 'r', 'l', 'd'};
+
+/** Need to be import, to increment active class c sesssions. 
+ * Otherwise after multicast group session timeout class A will be forced independently of what 
+ * previous device class was. */
+/** @todo Consider. What if class C session request arrives and device is already in class C?
+ * Specification requires(?) that device "returns" to class A, but never mentions(?) what in case
+ * in which device was not in class C mode in the first place. 
+ * Additionaly what in case when user application requests device class change when there's active 
+ * session which requires proper class to be active.
+*/
+extern int lorawan_services_class_c_start(void);
 
 static void downlink_info(uint8_t port, bool data_pending, int16_t rssi, int8_t snr,
 			  uint8_t len, const uint8_t *data)
@@ -78,6 +89,7 @@ void main(void)
 		return;
 	}
 
+	lorawan_enable_adr(true);
 	lorawan_register_downlink_callback(&downlink_cb);
 	lorawan_register_dr_changed_callback(datarate_changed);
 
@@ -93,6 +105,13 @@ void main(void)
 		LOG_ERR("lorawan_join_network failed: %d", ret);
 		return;
 	}
+
+	ret = lorawan_services_class_c_start();
+	if (ret < 0)
+	{
+		LOG_ERR("Failed to set device class C: %d", ret);
+	}
+	
 
 	/*
 	 * Clock synchronization is required to schedule the multicast session
