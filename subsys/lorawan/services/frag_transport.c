@@ -252,8 +252,8 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 
 			if (ctx[index].decoder_process_status == FRAG_SESSION_ONGOING) {
 				if (frag_counter > ctx[index].nb_frag) {
-					/* Additional fragments have to be cached in RAM
-					 * for recovery algorithm.
+					/* Additional fragments have to be cached for recovery
+					 * algorithm.
 					 */
 					frag_flash_use_cache();
 				}
