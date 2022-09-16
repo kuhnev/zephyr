@@ -6,6 +6,12 @@
 
 /delete-node/ &storage_partition;
 
+&subghzspi {
+	lora: radio@0 {
+        rfo-low-power;
+	};
+};
+
 &flash0 {
 	partitions {
 		compatible = "fixed-partitions";

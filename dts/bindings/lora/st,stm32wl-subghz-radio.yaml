@@ -12,3 +12,11 @@ properties:
       required: true
       description: |
         Position of the "Radio IRQ, Busy" interrupt line.
+    rfo-low-power:
+      type: boolean
+      required: false
+      description: |
+        Set to select low power radio output (RFO_LP pin) instead of
+        high power (RFO_HP pin).
+
+      
