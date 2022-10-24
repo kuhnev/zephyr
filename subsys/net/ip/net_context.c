@@ -118,10 +118,6 @@ static uint16_t find_available_port(struct net_context *context,
 
 	do {
 		local_port = sys_rand32_get() | 0x8000;
-		if (local_port <= 1023U) {
-			/* 0 - 1023 ports are reserved */
-			continue;
-		}
 	} while (check_used_port(net_context_get_proto(context),
 				 htons(local_port), addr) == -EEXIST);
 
@@ -1673,7 +1669,8 @@ static int context_sendto(struct net_context *context,
 		if (net_context_get_type(context) == SOCK_DGRAM) {
 			NET_ERR("Available payload buffer (%zu) is not enough for requested DGRAM (%zu)",
 				tmp_len, len);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto fail;
 		}
 		len = tmp_len;
 	}

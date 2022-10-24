@@ -390,7 +390,7 @@ static void hexdump_line_print(const struct log_output *output,
 		}
 
 		if (i < length) {
-			char c = (char)data[i];
+			unsigned char c = (unsigned char)data[i];
 
 			print_formatted(output, "%c",
 			      isprint((int)c) ? c : '.');
@@ -429,7 +429,7 @@ static uint32_t prefix_print(const struct log_output *output,
 	bool stamp = flags & LOG_OUTPUT_FLAG_TIMESTAMP;
 	bool colors_on = flags & LOG_OUTPUT_FLAG_COLORS;
 	bool level_on = flags & LOG_OUTPUT_FLAG_LEVEL;
-	const char *tag = z_log_get_tag();
+	const char *tag = IS_ENABLED(CONFIG_LOG) ? z_log_get_tag() : NULL;
 
 	if (IS_ENABLED(CONFIG_LOG_BACKEND_NET) &&
 	    flags & LOG_OUTPUT_FLAG_FORMAT_SYSLOG) {
