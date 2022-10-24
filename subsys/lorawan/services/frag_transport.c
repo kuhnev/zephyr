@@ -93,7 +93,8 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 	uint8_t tx_buf[3 * MAX_FRAG_TRANSPORT_ANS_LEN];
 	uint8_t tx_pos = 0;
 	uint8_t rx_pos = 0;
-	int ans_delay = 0;
+    /** @todo provide delay by default, without delay, some answers might not work */
+	int ans_delay = 1;
 
 	__ASSERT(port == LORAWAN_PORT_FRAG_TRANSPORT, "Wrong port %d", port);
 
@@ -257,7 +258,7 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 			}
 
 			if (frag_counter > ctx[index].nb_frag) {
-				/* Additional fragments have to be cached in RAM
+				/* Additional fragments have to be cached
 				* for recovery algorithm.
 				*/
 				frag_flash_use_cache();
