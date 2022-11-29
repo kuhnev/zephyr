@@ -247,14 +247,14 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 
 			if (!ctx[index].is_active) {
 				LOG_ERR("DataFragment session %d inactive", index);
-				break;
+				return;
 			}
 
 			if (decoder.sta == FRAG_DEC_STA_DONE)
 			{
 				LOG_INF("Ignoring DataFragment %u of %u, index: %u, decoder already DONE",
 					frag_counter, ctx[index].nb_frag, index);
-				break;
+				return;
 			}
 
 			if (frag_counter > ctx[index].nb_frag) {

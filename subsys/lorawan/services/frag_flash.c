@@ -121,7 +121,7 @@ int frag_flash_init(uint32_t fragment_size)
 int frag_flash_write(uint32_t addr, const uint8_t *data, uint32_t size)
 {
 	uint16_t frag_number;
-	int8_t ret = 0;
+	int ret = 0;
 
 	frag_number = frag_address_to_number(addr);
 	if (size != frag_size || frag_number == 0) {
