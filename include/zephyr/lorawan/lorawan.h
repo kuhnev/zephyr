@@ -196,6 +196,13 @@ void lorawan_register_dr_changed_callback(void (*dr_cb)(enum lorawan_datarate));
 int lorawan_join(const struct lorawan_join_config *config);
 
 /**
+ * @brief Check if LoRaWAN network is activated.
+ * 
+ * @return true if activated, false otherwise
+*/
+bool lorawan_is_activated(void);
+
+/**
  * @brief Start the LoRaWAN stack
  *
  * This function need to be called before joining the network.

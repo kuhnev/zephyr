@@ -362,6 +362,33 @@ out:
 	return ret;
 }
 
+bool lorawan_is_activated(void)
+{
+	MibRequestConfirm_t mib_req;
+	bool is_activated = false;
+
+	mib_req.Type = MIB_NETWORK_ACTIVATION;
+	LoRaMacMibGetRequestConfirm(&mib_req);
+
+	switch(mib_req.Param.NetworkActivation)
+	{
+		case ACTIVATION_TYPE_NONE:
+			is_activated = false;
+			break;
+		case ACTIVATION_TYPE_ABP:
+			is_activated = true;
+			break;
+		case ACTIVATION_TYPE_OTAA:
+			is_activated = true;
+			break;
+		default:
+			is_activated = false;
+			break;
+	}
+
+	return is_activated;
+}
+
 int lorawan_set_class(enum lorawan_class dev_class)
 {
 	MibRequestConfirm_t mib_req;
