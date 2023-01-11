@@ -211,7 +211,7 @@ void frag_flash_use_cache(void)
 void frag_flash_finish(void)
 {
 	uint32_t frag_address;
-	int err;
+	int err = 0;
 #ifdef CONFIG_LORAWAN_FRAG_TRANSPORT_SCRATCH_PARTITION_CACHE
 	uint8_t buf[frag_size];
 #endif
