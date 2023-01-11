@@ -19,7 +19,7 @@
 
 LOG_MODULE_REGISTER(lorawan_frag_flash, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);
 
-#define TARGET_IMAGE_AREA FLASH_AREA_ID(image_1)
+#define TARGET_IMAGE_AREA DT_FIXED_PARTITION_ID(DT_NODE_BY_FIXED_PARTITION_LABEL(image_1))
 
 #ifdef CONFIG_LORAWAN_FRAG_TRANSPORT_SCRATCH_PARTITION_CACHE
 
@@ -85,7 +85,7 @@ int frag_flash_init(uint32_t fragment_size)
 #ifdef CONFIG_LORAWAN_FRAG_TRANSPORT_SCRATCH_PARTITION_CACHE
 	struct flash_pages_info page_info;
 
-	scratch_fs.offset = FLASH_AREA_OFFSET(SCRATCH_PARTTITION_LABEL);
+	scratch_fs.offset = DT_REG_ADDR(DT_NODE_BY_FIXED_PARTITION_LABEL(SCRATCH_PARTTITION_LABEL));
 	err = flash_get_page_info_by_offs(scratch_fs.flash_device, scratch_fs.offset,
 					  &page_info);
 	if (err) {
@@ -93,7 +93,8 @@ int frag_flash_init(uint32_t fragment_size)
 		return err;
 	}
 	scratch_fs.sector_size = page_info.size;
-	scratch_fs.sector_count = FLASH_AREA_SIZE(SCRATCH_PARTTITION_LABEL) / page_info.size;
+	scratch_fs.sector_count = 
+		DT_REG_SIZE(DT_NODE_BY_FIXED_PARTITION_LABEL(SCRATCH_PARTTITION_LABEL)) / page_info.size;
 
 	err = nvs_mount(&scratch_fs);
 	err |= nvs_clear(&scratch_fs);

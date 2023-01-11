@@ -126,14 +126,14 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 
 				/* TODO: double-check all below parameters */
 
-				uint8_t missing_frag = CLAMP(ctx[index].nb_frag -
-					decoder.lost_frm_count, 0, 255);
+				uint16_t received_frags = ctx[index].nb_frag - decoder.lost_frm_count;
+				uint8_t missing_frags = CLAMP(decoder.lost_frm_count, 0, 255);
 
 				tx_buf[tx_pos++] = FRAG_TRANSPORT_CMD_FRAG_STATUS;
-				tx_buf[tx_pos++] = decoder.lost_frm_count & 0xFF;
+				tx_buf[tx_pos++] = received_frags & 0xFF;
 				tx_buf[tx_pos++] = (index << 6) |
-					((decoder.lost_frm_count >> 8) & 0x3F);
-				tx_buf[tx_pos++] = missing_frag;
+					((received_frags >> 8) & 0x3F);
+				tx_buf[tx_pos++] = missing_frags;
 				tx_buf[tx_pos++] = 0x00; //ctx[index].decoder_status.MatrixError & 0x01;
 
 				ans_delay = sys_rand32_get() %
