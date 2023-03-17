@@ -266,12 +266,18 @@ static int modbus_rtu_rx_adu(struct modbus_context *ctx)
 
 	ctx->rx_adu.crc = sys_get_le16(&cfg->uart_buf[crc_idx]);
 	/* Calculate CRC over address, function code, and payload */
-	calc_crc = crc16_ansi(&cfg->uart_buf[0],
-			      cfg->uart_buf_ctr - sizeof(ctx->rx_adu.crc));
+	calc_crc = crc16_ansi(&cfg->uart_buf[0], cfg->uart_buf_ctr - sizeof(ctx->rx_adu.crc));
 
 	if (ctx->rx_adu.crc != calc_crc) {
-		LOG_WRN("Calculated CRC does not match received CRC");
-		return -EIO;
+		calc_crc = crc16_ansi(&cfg->uart_buf[0],
+				      cfg->uart_buf_ctr - 1 - sizeof(ctx->rx_adu.crc));
+
+		ctx->rx_adu.crc = sys_get_le16(&cfg->uart_buf[crc_idx - 1]);
+		if (ctx->rx_adu.crc != calc_crc) {
+			LOG_HEXDUMP_WRN(cfg->uart_buf, cfg->uart_buf_ctr, "Modbus buffer");
+			LOG_WRN("Calculated CRC does not match received CRC");
+			return -EIO;
+		}
 	}
 
 	return 0;
