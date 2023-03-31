@@ -117,6 +117,28 @@ struct lorawan_join_config {
 	enum lorawan_act_type mode;
 };
 
+struct lorawan_local_mcast_group {
+	uint32_t addr;
+	/**
+	 * Next frame counter value of the multicast downlink to be sent
+	*/
+	uint32_t fcnt_min;
+	/**
+	 * Lifetime of this multicast group expressed as a maximum number
+	*/
+	uint32_t fcnt_max;
+
+	/*
+	* Multicast application session key
+	*/
+	uint8_t *mc_app_skey;
+	/*
+	* Multicast network session key
+	*/
+	uint8_t *mc_nwk_skey;
+
+};
+
 #define LW_RECV_PORT_ANY UINT16_MAX
 
 struct lorawan_downlink_cb {
@@ -366,6 +388,9 @@ int lorawan_frag_transport_run(void (*transport_finished_cb)(void));
  * @return 0 if successful, negative errno otherwise.
  */
 int lorawan_remote_multicast_run(void);
+
+
+int lorawan_local_multicast_setup(const struct lorawan_local_mcast_group *group_cfg, uint8_t id);
 
 #endif /* CONFIG_LORAWAN_REMOTE_MULTICAST */
 

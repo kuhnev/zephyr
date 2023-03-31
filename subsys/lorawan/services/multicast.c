@@ -36,28 +36,30 @@ enum multicast_commands {
 	MULTICAST_CMD_MC_CLASS_B_SESSION = 0x05,
 };
 
+struct multicast_remote_group {
+	/**
+	 * McAddr: multicast group network address
+	 */
+	uint32_t addr;
+	/**
+	 * McKey_encrypted: encrypted multicast group key used to derive
+	 * McAppSKey and McNetSKey
+	 */
+	uint8_t key_encrypted[16];
+	/**
+	 * minMcFCount: next frame counter value of the multicast downlink to be sent
+	 */
+	uint32_t fcnt_min;
+	/**
+	 * maxMcFCount: lifetime of this multicast group expressed as a maximum number
+	 * of frames
+	 */
+	uint32_t fcnt_max;
+};
+
 struct multicast_context {
 	/* below group-specific settings have to be stored in non-volatile memory */
-	struct {
-		/**
-		 * McAddr: multicast group network address
-		 */
-		uint32_t addr;
-		/**
-		 * McKey_encrypted: encrypted multicast group key used to derive
-		 * McAppSKey and McNetSKey
-		 */
-		uint8_t key_encrypted[16];
-		/**
-		 * minMcFCount: next frame counter value of the multicast downlink to be sent
-		 */
-		uint32_t fcnt_min;
-		/**
-		 * maxMcFCount: lifetime of this multicast group expressed as a maximum number
-		 * of frames
-		 */
-		uint32_t fcnt_max;
-	} mc_group;
+	struct multicast_remote_group mc_group;
 	/** Start of the Class C window as GPS epoch modulo 2^32 */
 	uint32_t session_time;
 	/** Maximum duration of MC session before device reverts to class A */
@@ -138,7 +140,7 @@ static void multicast_session_stop(struct k_work *work)
 	}
 }
 
-static inline LoRaMacStatus_t multicast_group_setup(uint8_t id)
+static inline LoRaMacStatus_t multicast_group_setup_remote(uint8_t id)
 {
 	__ASSERT_NO_MSG(id < ARRAY_SIZE(ctx));
 
@@ -155,6 +157,35 @@ static inline LoRaMacStatus_t multicast_group_setup(uint8_t id)
 
 	return LoRaMacMcChannelSetup(&channel);
 }
+
+static inline LoRaMacStatus_t multicast_group_delete_remote(uint8_t id)
+{
+	__ASSERT_NO_MSG(id < ARRAY_SIZE(ctx));
+
+	return LoRaMacMcChannelDelete(id);
+}
+
+static inline LoRaMacStatus_t multicast_group_setup_local(const struct lorawan_local_mcast_group *group_cfg, 
+														  uint8_t id)
+{
+	__ASSERT_NO_MSG(id < ARRAY_SIZE(ctx));
+	__ASSERT_NO_MSG(group_cfg != NULL);
+
+	McChannelParams_t channel = {
+		.IsRemotelySetup = false,
+		.IsEnabled = true,
+		.GroupID = (AddressIdentifier_t)id,
+		.Address = group_cfg->addr,
+		.McKeys.Session.McAppSKey = group_cfg->mc_app_skey,
+		.McKeys.Session.McNwkSKey = group_cfg->mc_nwk_skey,
+		.FCountMin = group_cfg->fcnt_min,
+		.FCountMax = group_cfg->fcnt_max,
+		.RxParams = {0}
+	};
+
+	return LoRaMacMcChannelSetup(&channel);
+}
+
 
 static void multicast_package_callback(uint8_t port, bool data_pending, int16_t rssi, int8_t snr,
 				       uint8_t len, const uint8_t *rx_buf)
@@ -209,7 +240,7 @@ static void multicast_package_callback(uint8_t port, bool data_pending, int16_t 
 				"fcnt_min: %u, fcnt_max: %u", id, ctx[id].mc_group.addr,
 				ctx[id].mc_group.fcnt_min, ctx[id].mc_group.fcnt_max);
 
-			LoRaMacStatus_t ret = multicast_group_setup(id);
+			LoRaMacStatus_t ret = multicast_group_setup_remote(id);
 
 			tx_buf[tx_pos++] = MULTICAST_CMD_MC_GROUP_SETUP;
 			if (ret == LORAMAC_STATUS_OK) {
@@ -360,7 +391,7 @@ int lorawan_remote_multicast_run(void)
 	settings_load();
 
 	for (int i = 0; i < ARRAY_SIZE(ctx); i++) {
-		multicast_group_setup(i);
+		multicast_group_setup_remote(i);
 		LOG_DBG("mc_group %u init, addr: 0x%.8X, fcnt_min: %u, fcnt_max: %u", i,
 			ctx[i].mc_group.addr, ctx[i].mc_group.fcnt_min,	ctx[i].mc_group.fcnt_max);
 		k_work_init_delayable(&ctx[i].session_start_work, multicast_session_start);
@@ -371,3 +402,23 @@ int lorawan_remote_multicast_run(void)
 
 	return 0;
 }
+
+int lorawan_local_multicast_setup(const struct lorawan_local_mcast_group *group_cfg, uint8_t id)
+{
+	if (group_cfg && (id < LORAMAC_MAX_MC_CTX))
+	{
+		LoRaMacStatus_t ret = multicast_group_delete_remote(id);
+
+		if (ret == LORAMAC_STATUS_OK)
+		{
+			multicast_settings_store(id);
+			
+			ret = multicast_group_setup_local(group_cfg, id);
+		}
+
+		return status2errno(ret);
+	}
+
+	return -EINVAL;
+}
+
