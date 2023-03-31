@@ -416,7 +416,7 @@ int lorawan_local_multicast_setup(const struct lorawan_local_mcast_group *group_
 			ret = multicast_group_setup_local(group_cfg, id);
 		}
 
-		return status2errno(ret);
+		return lorawan_status2errno(ret);
 	}
 
 	return -EINVAL;
