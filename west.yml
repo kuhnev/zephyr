@@ -172,8 +172,8 @@ manifest:
         - fs
       revision: ca583fd297ceb48bced3c2548600dc615d67af24
     - name: loramac-node
-      remote: libresolar
-      revision: v4.x-zephyr-fuota
+      remote: kuhnev
+      revision: v4.7.0-zephyr
       path: modules/lib/loramac-node
     - name: lvgl
       revision: af95bdfcf6784edd958ea08139c713e2d3dee7af
