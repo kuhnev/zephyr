@@ -78,8 +78,6 @@ struct frag_transport_context {
 
 static struct frag_transport_context ctx[LORAMAC_MAX_MC_CTX];
 
-static struct k_work_q *workq;
-
 /* ToDo: protect with sempahore. Only one frag session may be ongoing. */
 frag_dec_t decoder;
 static uint8_t dec_buf[DEC_BUF_SIZE];
@@ -292,7 +290,7 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 
 	if (tx_pos > 0) {
 		lorawan_services_schedule_uplink(LORAWAN_PORT_FRAG_TRANSPORT, tx_buf, tx_pos,
-						 K_SECONDS(ans_delay));
+						 ans_delay * MSEC_PER_SEC);
 	}
 }
 
@@ -303,7 +301,6 @@ static struct lorawan_downlink_cb downlink_cb = {
 
 int lorawan_frag_transport_run(void (*transport_finished_cb)(void))
 {
-	workq = lorawan_services_get_work_queue();
 	finished_cb = transport_finished_cb;
 
 	decoder.cfg.dt = dec_buf;

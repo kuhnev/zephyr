@@ -73,8 +73,6 @@ struct multicast_context {
 
 static struct multicast_context ctx[LORAMAC_MAX_MC_CTX];
 
-static struct k_work_q *workq;
-
 static void multicast_settings_store(uint8_t group_id)
 {
 	char path[30];
@@ -123,8 +121,7 @@ static void multicast_session_start(struct k_work *work)
 	ret = lorawan_services_class_c_start();
 	if (ret < 0) {
 		LOG_WRN("Failed to switch to class C: %d. Retrying in 1s.", ret);
-		k_work_reschedule_for_queue(workq,
-					    k_work_delayable_from_work(work), K_SECONDS(1));
+		lorawan_services_reschedule_work(k_work_delayable_from_work(work), K_SECONDS(1));
 	}
 }
 
@@ -135,8 +132,7 @@ static void multicast_session_stop(struct k_work *work)
 	ret = lorawan_services_class_c_stop();
 	if (ret < 0) {
 		LOG_WRN("Failed to revert to class A: %d. Retrying in 1s.", ret);
-		k_work_reschedule_for_queue(workq,
-					    k_work_delayable_from_work(work), K_SECONDS(1));
+		lorawan_services_reschedule_work(k_work_delayable_from_work(work), K_SECONDS(1));
 	}
 }
 
@@ -326,14 +322,11 @@ static void multicast_package_callback(uint8_t port, bool data_pending, int16_t 
 						LOG_DBG("Starting class C session in %d s",
 							time_to_start);
 
-						k_work_reschedule_for_queue(workq,
-							&ctx[id].session_start_work,
-							K_SECONDS(time_to_start));
+						lorawan_services_reschedule_work(&ctx[id].session_start_work, K_SECONDS(time_to_start));
 
-						k_work_reschedule_for_queue(workq,
-							&ctx[id].session_stop_work,
-							K_SECONDS(time_to_start +
-								  ctx[id].session_timeout));
+						lorawan_services_reschedule_work(&ctx[id].session_stop_work, 
+														 K_SECONDS(time_to_start + ctx[id].session_timeout));
+
 					}
 
 					tx_buf[tx_pos++] = status;
@@ -373,7 +366,7 @@ static void multicast_package_callback(uint8_t port, bool data_pending, int16_t 
 		uint32_t delay = 1 + sys_rand32_get() % 3;
 
 		lorawan_services_schedule_uplink(LORAWAN_PORT_MULTICAST, tx_buf, tx_pos,
-						 K_SECONDS(delay));
+						 delay * MSEC_PER_SEC);
 	}
 }
 
@@ -384,8 +377,6 @@ static struct lorawan_downlink_cb downlink_cb = {
 
 int lorawan_remote_multicast_run(void)
 {
-	workq = lorawan_services_get_work_queue();
-
 	settings_subsys_init();
 	settings_register(&settings_conf);
 	settings_load();
