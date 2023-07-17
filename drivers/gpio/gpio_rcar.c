@@ -14,8 +14,9 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/renesas_cpg_mssr.h>
+#include <zephyr/irq.h>
 
-#include "gpio_utils.h"
+#include <zephyr/drivers/gpio/gpio_utils.h>
 
 typedef void (*init_func_t)(const struct device *dev);
 
@@ -252,7 +253,7 @@ static int gpio_rcar_init(const struct device *dev)
 	}
 
 	ret = clock_control_on(config->clock_dev,
-			       (clock_control_subsys_t *) &config->mod_clk);
+			       (clock_control_subsys_t) &config->mod_clk);
 
 	if (ret < 0) {
 		return ret;

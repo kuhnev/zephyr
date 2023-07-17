@@ -15,6 +15,8 @@
 #include <stm32_ll_pwr.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/arch/arm/aarch32/nmi.h>
+#include <zephyr/irq.h>
 #include <stm32l5xx_ll_icache.h>
 #include <zephyr/logging/log.h>
 
@@ -29,11 +31,10 @@ LOG_MODULE_REGISTER(soc);
  *
  * @return 0
  */
-static int stm32l5_init(const struct device *arg)
+static int stm32l5_init(void)
 {
 	uint32_t key;
 
-	ARG_UNUSED(arg);
 
 	/* Enable ICACHE */
 	while (LL_ICACHE_IsActiveFlag_BUSY()) {

@@ -19,6 +19,7 @@
 
 #include <zephyr/sw_isr_table.h>
 #include <zephyr/drivers/interrupt_controller/riscv_plic.h>
+#include <zephyr/irq.h>
 
 #define PLIC_MAX_PRIO	DT_INST_PROP(0, riscv_max_priority)
 #define PLIC_PRIO	DT_INST_REG_ADDR_BY_NAME(0, prio)
@@ -39,7 +40,7 @@ static int save_irq;
  * @brief Enable a riscv PLIC-specific interrupt line
  *
  * This routine enables a RISCV PLIC-specific interrupt line.
- * riscv_plic_irq_enable is called by SOC_FAMILY_RISCV_PRIVILEGE
+ * riscv_plic_irq_enable is called by SOC_FAMILY_RISCV_PRIVILEGED
  * arch_irq_enable function to enable external interrupts for
  * IRQS level == 2, whenever CONFIG_RISCV_HAS_PLIC variable is set.
  *
@@ -60,7 +61,7 @@ void riscv_plic_irq_enable(uint32_t irq)
  * @brief Disable a riscv PLIC-specific interrupt line
  *
  * This routine disables a RISCV PLIC-specific interrupt line.
- * riscv_plic_irq_disable is called by SOC_FAMILY_RISCV_PRIVILEGE
+ * riscv_plic_irq_disable is called by SOC_FAMILY_RISCV_PRIVILEGED
  * arch_irq_disable function to disable external interrupts, for
  * IRQS level == 2, whenever CONFIG_RISCV_HAS_PLIC variable is set.
  *
@@ -171,9 +172,8 @@ static void plic_irq_handler(const void *arg)
  *
  * @retval 0 on success.
  */
-static int plic_init(const struct device *dev)
+static int plic_init(void)
 {
-	ARG_UNUSED(dev);
 
 	volatile uint32_t *en = (volatile uint32_t *)PLIC_IRQ_EN;
 	volatile uint32_t *prio = (volatile uint32_t *)PLIC_PRIO;

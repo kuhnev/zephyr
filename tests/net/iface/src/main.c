@@ -75,11 +75,6 @@ struct net_if_test {
 	struct net_linkaddr ll_addr;
 };
 
-static int net_iface_dev_init(const struct device *dev)
-{
-	return 0;
-}
-
 static uint8_t *net_iface_get_mac(const struct device *dev)
 {
 	struct net_if_test *data = dev->data;
@@ -149,7 +144,7 @@ static struct dummy_api net_iface_api = {
 NET_DEVICE_INIT_INSTANCE(net_iface1_test,
 			 "iface1",
 			 iface1,
-			 net_iface_dev_init,
+			 NULL,
 			 NULL,
 			 &net_iface1_data,
 			 NULL,
@@ -162,7 +157,7 @@ NET_DEVICE_INIT_INSTANCE(net_iface1_test,
 NET_DEVICE_INIT_INSTANCE(net_iface2_test,
 			 "iface2",
 			 iface2,
-			 net_iface_dev_init,
+			 NULL,
 			 NULL,
 			 &net_iface2_data,
 			 NULL,
@@ -175,7 +170,7 @@ NET_DEVICE_INIT_INSTANCE(net_iface2_test,
 NET_DEVICE_INIT_INSTANCE(net_iface3_test,
 			 "iface3",
 			 iface3,
-			 net_iface_dev_init,
+			 NULL,
 			 NULL,
 			 &net_iface3_data,
 			 NULL,
@@ -433,6 +428,92 @@ static void iface_teardown(void *dummy)
 	net_if_down(iface2);
 	net_if_down(iface3);
 	net_if_down(iface4);
+}
+
+static void test_iface_init(struct net_if *iface, bool carrier, bool dormant)
+{
+	net_if_down(iface);
+
+	if (carrier) {
+		net_if_carrier_on(iface);
+	} else {
+		net_if_carrier_off(iface);
+	}
+
+	if (dormant) {
+		net_if_dormant_on(iface);
+	} else {
+		net_if_dormant_off(iface);
+	}
+
+	net_if_up(iface);
+}
+
+ZTEST(net_iface, test_oper_state)
+{
+	/* Carrier OFF, Dormant OFF - interface should remain down */
+	test_iface_init(iface1, false, false);
+	zassert_false(net_if_is_up(iface1), "Interface should be down");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_DOWN,
+		      "Wrong operational state");
+
+	/* Carrier ON transition - interface should go up */
+	net_if_carrier_on(iface1);
+	zassert_true(net_if_is_up(iface1), "Interface should be up");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_UP,
+		      "Wrong operational state");
+
+	/* Carrier ON, Dormant ON - interface should remain down */
+	test_iface_init(iface1, true, true);
+	zassert_false(net_if_is_up(iface1), "Interface should be down");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_DORMANT,
+		      "Wrong operational state");
+
+	/* Dormant OFF transition - interface should go up */
+	net_if_dormant_off(iface1);
+	zassert_true(net_if_is_up(iface1), "Interface should be up");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_UP,
+		      "Wrong operational state");
+
+	/* Carrier ON, Dormant OFF - interface should go up right away */
+	test_iface_init(iface1, true, false);
+	zassert_true(net_if_is_up(iface1), "Interface should be up");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_UP,
+		      "Wrong operational state");
+
+	/* Carrier OFF transition - interface should go down */
+	net_if_carrier_off(iface1);
+	zassert_false(net_if_is_up(iface1), "Interface should be down");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_DOWN,
+		      "Wrong operational state");
+
+	/* Carrier ON, Dormant OFF - interface should go up right away */
+	test_iface_init(iface1, true, false);
+	zassert_true(net_if_is_up(iface1), "Interface should be up");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_UP,
+		      "Wrong operational state");
+
+	/* Dormant ON transition - interface should go down */
+	net_if_dormant_on(iface1);
+	zassert_false(net_if_is_up(iface1), "Interface should be down");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_DORMANT,
+		      "Wrong operational state");
+
+	/* Carrier ON, Dormant OFF - interface should go up right away */
+	test_iface_init(iface1, true, false);
+	zassert_true(net_if_is_up(iface1), "Interface should be up");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_UP,
+		      "Wrong operational state");
+
+	/* Admin down transition - interface should go down */
+	net_if_down(iface1);
+	zassert_false(net_if_is_up(iface1), "Interface should be down");
+	zassert_equal(net_if_oper_state(iface1), NET_IF_OPER_DOWN,
+		      "Wrong operational state");
+
+	/* Bring the interface back up */
+	net_if_up(iface1);
+	zassert_true(net_if_is_up(iface1), "Interface should be up");
 }
 
 static bool send_iface(struct net_if *iface, int val, bool expect_fail)

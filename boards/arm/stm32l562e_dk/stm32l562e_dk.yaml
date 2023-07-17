@@ -10,6 +10,7 @@ supported:
   - i2c
   - lptim
   - pwm
+  - counter
   - watchdog
   - dac
   - adc
@@ -19,6 +20,7 @@ supported:
   - arduino_spi
   - sdhc
   - usb
+  - usb_device
   - nvs
 ram: 192
 flash: 512

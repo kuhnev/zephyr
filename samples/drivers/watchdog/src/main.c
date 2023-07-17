@@ -26,8 +26,14 @@
  */
 #define WDT_ALLOW_CALLBACK 0
 #elif DT_HAS_COMPAT_STATUS_OKAY(raspberrypi_pico_watchdog)
-#define WDT_MAX_WINDOW  600000U
 #define WDT_ALLOW_CALLBACK 0
+#elif DT_HAS_COMPAT_STATUS_OKAY(gd_gd32_wwdgt)
+#define WDT_MAX_WINDOW 24U
+#define WDT_MIN_WINDOW 18U
+#define WDG_FEED_INTERVAL 12U
+#elif DT_HAS_COMPAT_STATUS_OKAY(intel_tco_wdt)
+#define WDT_ALLOW_CALLBACK 0
+#define WDT_MAX_WINDOW 3000U
 #endif
 
 #ifndef WDT_ALLOW_CALLBACK
@@ -36,6 +42,14 @@
 
 #ifndef WDT_MAX_WINDOW
 #define WDT_MAX_WINDOW  1000U
+#endif
+
+#ifndef WDT_MIN_WINDOW
+#define WDT_MIN_WINDOW  0U
+#endif
+
+#ifndef WDG_FEED_INTERVAL
+#define WDG_FEED_INTERVAL 50U
 #endif
 
 #if WDT_ALLOW_CALLBACK
@@ -54,7 +68,7 @@ static void wdt_callback(const struct device *wdt_dev, int channel_id)
 }
 #endif /* WDT_ALLOW_CALLBACK */
 
-void main(void)
+int main(void)
 {
 	int err;
 	int wdt_channel_id;
@@ -64,7 +78,7 @@ void main(void)
 
 	if (!device_is_ready(wdt)) {
 		printk("%s: device not ready.\n", wdt->name);
-		return;
+		return 0;
 	}
 
 	struct wdt_timeout_cfg wdt_config = {
@@ -72,7 +86,7 @@ void main(void)
 		.flags = WDT_FLAG_RESET_SOC,
 
 		/* Expire watchdog after max window */
-		.window.min = 0U,
+		.window.min = WDT_MIN_WINDOW,
 		.window.max = WDT_MAX_WINDOW,
 	};
 
@@ -94,21 +108,25 @@ void main(void)
 	}
 	if (wdt_channel_id < 0) {
 		printk("Watchdog install error\n");
-		return;
+		return 0;
 	}
 
 	err = wdt_setup(wdt, WDT_OPT_PAUSE_HALTED_BY_DBG);
 	if (err < 0) {
 		printk("Watchdog setup error\n");
-		return;
+		return 0;
 	}
 
+#if WDT_MIN_WINDOW != 0
+	/* Wait opening window. */
+	k_msleep(WDT_MIN_WINDOW);
+#endif
 	/* Feeding watchdog. */
 	printk("Feeding watchdog %d times\n", WDT_FEED_TRIES);
 	for (int i = 0; i < WDT_FEED_TRIES; ++i) {
 		printk("Feeding watchdog...\n");
 		wdt_feed(wdt, wdt_channel_id);
-		k_sleep(K_MSEC(50));
+		k_sleep(K_MSEC(WDG_FEED_INTERVAL));
 	}
 
 	/* Waiting for the SoC reset. */
@@ -116,4 +134,5 @@ void main(void)
 	while (1) {
 		k_yield();
 	}
+	return 0;
 }

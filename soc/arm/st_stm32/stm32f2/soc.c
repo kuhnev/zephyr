@@ -15,8 +15,10 @@
 #include <soc.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/arch/arm/aarch32/nmi.h>
 #include <stm32_ll_system.h>
 #include <zephyr/linker/linker-defs.h>
+#include <zephyr/irq.h>
 #include <string.h>
 
 /**
@@ -27,11 +29,10 @@
  *
  * @return 0
  */
-static int stm32f2_init(const struct device *arg)
+static int stm32f2_init(void)
 {
 	uint32_t key;
 
-	ARG_UNUSED(arg);
 
 	/* Enable ART Flash cache accelerator for both Instruction and Data */
 	LL_FLASH_EnableInstCache();

@@ -13,14 +13,14 @@
 LOG_MODULE_REGISTER(lorawan_services, CONFIG_LORAWAN_SERVICES_LOG_LEVEL);
 
 struct service_uplink_msg {
-	bool used;
-	uint8_t port;
+	sys_snode_t node;
+	/* absolute ticks when this message should be scheduled */
+	int64_t ticks;
 	/* sufficient space for up to 3 answers (max 6 bytes each) */
 	uint8_t data[18];
 	uint8_t len;
-	/* absolute ticks when this message should be scheduled */
-	int64_t ticks;
-	sys_snode_t node;
+	uint8_t port;
+	bool used;
 };
 
 K_THREAD_STACK_DEFINE(thread_stack_area, CONFIG_LORAWAN_SERVICES_THREAD_STACK_SIZE);
@@ -114,7 +114,7 @@ static inline void insert_uplink(struct service_uplink_msg *msg_new)
 	}
 }
 
-int lorawan_services_schedule_uplink(uint8_t port, uint8_t *data, uint8_t len, k_timeout_t timeout)
+int lorawan_services_schedule_uplink(uint8_t port, uint8_t *data, uint8_t len, uint32_t timeout)
 {
 	struct service_uplink_msg *next;
 	int64_t timeout_abs_ticks;
@@ -125,7 +125,7 @@ int lorawan_services_schedule_uplink(uint8_t port, uint8_t *data, uint8_t len, k
 		return -EFBIG;
 	}
 
-	timeout_abs_ticks = k_uptime_ticks() + timeout.ticks;
+	timeout_abs_ticks = k_uptime_ticks() + k_ms_to_ticks_ceil64(timeout);
 
 	k_sem_take(&msg_sem, K_FOREVER);
 
@@ -158,9 +158,9 @@ int lorawan_services_schedule_uplink(uint8_t port, uint8_t *data, uint8_t len, k
 	return -ENOSPC;
 }
 
-struct k_work_q *lorawan_services_get_work_queue(void)
+int lorawan_services_reschedule_work(struct k_work_delayable *dwork, k_timeout_t delay)
 {
-	return &services_workq;
+	return k_work_reschedule_for_queue(&services_workq, dwork, delay);
 }
 
 int lorawan_services_class_c_start(void)
@@ -212,9 +212,8 @@ int lorawan_services_class_c_active(void)
 	return active_class_c_sessions;
 }
 
-static int lorawan_services_init(const struct device *dev)
+static int lorawan_services_init(void)
 {
-	ARG_UNUSED(dev);
 
 	sys_slist_init(&msg_list);
 	k_sem_init(&msg_sem, 1, 1);

@@ -12,6 +12,7 @@
 #include "lorawan_services.h"
 
 #include <LoRaMac.h>
+#include <zephyr/kernel.h>
 #include <zephyr/lorawan/lorawan.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/random/rand32.h>
@@ -50,7 +51,7 @@ struct clock_sync_context {
 	/**
 	 * Offset to be added to system uptime to get GPS time (as used by LoRaWAN)
 	 */
-	int64_t time_correction;
+	uint32_t time_offset;
 	/**
 	 * AppTimeReq retransmission interval in seconds
 	 *
@@ -63,19 +64,17 @@ struct clock_sync_context {
 
 static struct clock_sync_context ctx;
 
-static struct k_work_q *workq;
-
 /**
  * Writes the DeviceTime into the buffer.
  *
- * @returns number of bytes written or -1 in case of error
+ * @returns number of bytes written or -ENOSPC in case of error
  */
 static int clock_sync_serialize_device_time(uint8_t *buf, size_t size)
 {
-	uint64_t device_time = k_uptime_get() / 1000 + ctx.time_correction;
+	uint32_t device_time = k_uptime_get() / MSEC_PER_SEC + ctx.time_offset;
 
-	if (size < 4) {
-		return -1;
+	if (size < sizeof(uint32_t)) {
+		return -ENOSPC;
 	}
 
 	buf[0] = (device_time >> 0) & 0xFF;
@@ -83,7 +82,7 @@ static int clock_sync_serialize_device_time(uint8_t *buf, size_t size)
 	buf[2] = (device_time >> 16) & 0xFF;
 	buf[3] = (device_time >> 24) & 0xFF;
 
-	return 4;
+	return sizeof(uint32_t);
 }
 
 static void clock_sync_package_callback(uint8_t port, bool data_pending, int16_t rssi, int8_t snr,
@@ -124,7 +123,7 @@ static void clock_sync_package_callback(uint8_t port, bool data_pending, int16_t
 			uint8_t token = rx_buf[rx_pos++] & 0x0F;
 
 			if (token == ctx.req_token) {
-				ctx.time_correction += time_correction;
+				ctx.time_offset += time_correction;
 				ctx.req_token = (ctx.req_token + 1) % 16;
 				ctx.synchronized = true;
 
@@ -154,8 +153,7 @@ static void clock_sync_package_callback(uint8_t port, bool data_pending, int16_t
 
 			if (nb_transmissions != 0) {
 				ctx.nb_transmissions = nb_transmissions;
-				k_work_reschedule_for_queue(workq,
-					&ctx.resync_work, K_NO_WAIT);
+				lorawan_services_reschedule_work(&ctx.resync_work, K_NO_WAIT);
 			}
 
 			LOG_DBG("ForceDeviceResyncCmd nb_transmissions: %u", nb_transmissions);
@@ -167,8 +165,7 @@ static void clock_sync_package_callback(uint8_t port, bool data_pending, int16_t
 	}
 
 	if (tx_pos > 0) {
-		lorawan_services_schedule_uplink(LORAWAN_PORT_CLOCK_SYNC, tx_buf, tx_pos,
-						 K_NO_WAIT);
+		lorawan_services_schedule_uplink(LORAWAN_PORT_CLOCK_SYNC, tx_buf, tx_pos, 0);
 	}
 }
 
@@ -176,12 +173,6 @@ static int clock_sync_app_time_req(void)
 {
 	uint8_t tx_pos = 0;
 	uint8_t tx_buf[6];
-
-	if (lorawan_services_class_c_active() > 0) {
-		/* avoid disturbing the session and causing potential package loss */
-		LOG_DBG("AppTimeReq not sent because of active class C session");
-		return -EBUSY;
-	}
 
 	tx_buf[tx_pos++] = CLOCK_SYNC_CMD_APP_TIME;
 	tx_pos += clock_sync_serialize_device_time(tx_buf + tx_pos,
@@ -192,12 +183,11 @@ static int clock_sync_app_time_req(void)
 
 	LOG_DBG("Sending clock sync AppTimeReq (token %d)", ctx.req_token);
 
-	lorawan_services_schedule_uplink(LORAWAN_PORT_CLOCK_SYNC, tx_buf, tx_pos, K_NO_WAIT);
+	lorawan_services_schedule_uplink(LORAWAN_PORT_CLOCK_SYNC, tx_buf, tx_pos, 0);
 
 	if (ctx.nb_transmissions > 0) {
 		ctx.nb_transmissions--;
-		k_work_reschedule_for_queue(workq, &ctx.resync_work,
-					    K_SECONDS(CLOCK_RESYNC_DELAY));
+		lorawan_services_reschedule_work(&ctx.resync_work, K_SECONDS(CLOCK_RESYNC_DELAY));
 	}
 
 	return 0;
@@ -212,8 +202,7 @@ static void clock_sync_resync_handler(struct k_work *work)
 	/* Add +-30s jitter to actual periodicity as required */
 	periodicity = ctx.periodicity - 30 + sys_rand32_get() % 61;
 
-	k_work_reschedule_for_queue(workq, &ctx.resync_work,
-				    K_SECONDS(periodicity));
+	lorawan_services_reschedule_work(&ctx.resync_work, K_SECONDS(periodicity));
 }
 
 int lorawan_clock_sync_get(uint32_t *gps_time)
@@ -221,7 +210,7 @@ int lorawan_clock_sync_get(uint32_t *gps_time)
 	__ASSERT(gps_time != NULL, "gps_time parameter is required");
 
 	if (ctx.synchronized) {
-		*gps_time = (uint32_t)(k_uptime_get() / 1000 + ctx.time_correction);
+		*gps_time = (uint32_t)(k_uptime_get() / MSEC_PER_SEC + ctx.time_offset);
 		return 0;
 	} else {
 		return -EAGAIN;
@@ -235,14 +224,12 @@ static struct lorawan_downlink_cb downlink_cb = {
 
 int lorawan_clock_sync_run(void)
 {
-	workq = lorawan_services_get_work_queue();
-
 	ctx.periodicity = CONFIG_LORAWAN_APP_CLOCK_SYNC_PERIODICITY;
 
 	lorawan_register_downlink_callback(&downlink_cb);
 
 	k_work_init_delayable(&ctx.resync_work, clock_sync_resync_handler);
-	k_work_reschedule_for_queue(workq, &ctx.resync_work, K_NO_WAIT);
+	lorawan_services_reschedule_work(&ctx.resync_work, K_NO_WAIT);
 
 	return 0;
 }

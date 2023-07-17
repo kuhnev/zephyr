@@ -5,6 +5,8 @@
 
 #include <intel_adsp_ipc.h>
 #include <adsp_ipc_regs.h>
+#include <adsp_interrupt.h>
+#include <zephyr/irq.h>
 
 
 void intel_adsp_ipc_set_message_handler(const struct device *dev,
@@ -49,7 +51,7 @@ void z_intel_adsp_ipc_isr(const void *devarg)
 		}
 
 		regs->tdr = INTEL_ADSP_IPC_BUSY;
-		if (done && !IS_ENABLED(CONFIG_SOC_INTEL_CAVS_V15)) {
+		if (done) {
 #ifdef CONFIG_SOC_SERIES_INTEL_ACE
 			regs->tda = INTEL_ADSP_IPC_ACE1X_TDA_DONE;
 #else
@@ -59,19 +61,24 @@ void z_intel_adsp_ipc_isr(const void *devarg)
 	}
 
 	/* Same signal, but on different bits in 1.5 */
-	bool done = IS_ENABLED(CONFIG_SOC_INTEL_CAVS_V15) ?
-		(regs->idd & INTEL_ADSP_IPC_DONE) : (regs->ida & INTEL_ADSP_IPC_DONE);
+	bool done =  (regs->ida & INTEL_ADSP_IPC_DONE);
 
 	if (done) {
+		bool external_completion = false;
+
 		if (devdata->done_notify != NULL) {
-			devdata->done_notify(dev, devdata->done_arg);
+			external_completion = devdata->done_notify(dev, devdata->done_arg);
 		}
+		devdata->tx_ack_pending = false;
 		k_sem_give(&devdata->sem);
-		if (IS_ENABLED(CONFIG_SOC_INTEL_CAVS_V15)) {
-			regs->idd = INTEL_ADSP_IPC_DONE;
-		} else {
-			regs->ida = INTEL_ADSP_IPC_DONE;
+
+		/* IPC completion registers will be set externally */
+		if (external_completion) {
+			k_spin_unlock(&devdata->lock, key);
+			return;
 		}
+
+		regs->ida = INTEL_ADSP_IPC_DONE;
 	}
 
 	k_spin_unlock(&devdata->lock, key);
@@ -88,16 +95,12 @@ int intel_adsp_ipc_init(const struct device *dev)
 	 * the other side!), then enable.
 	 */
 	config->regs->tdr = INTEL_ADSP_IPC_BUSY;
-	if (IS_ENABLED(CONFIG_SOC_INTEL_CAVS_V15)) {
-		config->regs->idd = INTEL_ADSP_IPC_DONE;
-	} else {
-		config->regs->ida = INTEL_ADSP_IPC_DONE;
+	config->regs->ida = INTEL_ADSP_IPC_DONE;
 #ifdef CONFIG_SOC_SERIES_INTEL_ACE
-		config->regs->tda = INTEL_ADSP_IPC_ACE1X_TDA_DONE;
+	config->regs->tda = INTEL_ADSP_IPC_ACE1X_TDA_DONE;
 #else
-		config->regs->tda = INTEL_ADSP_IPC_DONE;
+	config->regs->tda = INTEL_ADSP_IPC_DONE;
 #endif
-	}
 	config->regs->ctl |= (INTEL_ADSP_IPC_CTL_IDIE | INTEL_ADSP_IPC_CTL_TBIE);
 	return 0;
 }
@@ -116,8 +119,10 @@ void intel_adsp_ipc_complete(const struct device *dev)
 bool intel_adsp_ipc_is_complete(const struct device *dev)
 {
 	const struct intel_adsp_ipc_config *config = dev->config;
+	const struct intel_adsp_ipc_data *devdata = dev->data;
+	bool not_busy = (config->regs->idr & INTEL_ADSP_IPC_BUSY) == 0;
 
-	return (config->regs->idr & INTEL_ADSP_IPC_BUSY) == 0;
+	return not_busy && !devdata->tx_ack_pending;
 }
 
 bool intel_adsp_ipc_send_message(const struct device *dev,
@@ -127,12 +132,13 @@ bool intel_adsp_ipc_send_message(const struct device *dev,
 	struct intel_adsp_ipc_data *devdata = dev->data;
 	k_spinlock_key_t key = k_spin_lock(&devdata->lock);
 
-	if ((config->regs->idr & INTEL_ADSP_IPC_BUSY) != 0) {
+	if ((config->regs->idr & INTEL_ADSP_IPC_BUSY) != 0 || devdata->tx_ack_pending) {
 		k_spin_unlock(&devdata->lock, key);
 		return false;
 	}
 
 	k_sem_init(&devdata->sem, 0, 1);
+	devdata->tx_ack_pending = true;
 	config->regs->idd = ext_data;
 	config->regs->idr = data | INTEL_ADSP_IPC_BUSY;
 	k_spin_unlock(&devdata->lock, key);
@@ -153,16 +159,38 @@ bool intel_adsp_ipc_send_message_sync(const struct device *dev,
 	return ret;
 }
 
+void intel_adsp_ipc_send_message_emergency(const struct device *dev, uint32_t data,
+					   uint32_t ext_data)
+{
+	const struct intel_adsp_ipc_config * const config = dev->config;
+
+	volatile struct intel_adsp_ipc * const regs = config->regs;
+	bool done;
+
+	/* check if host is processing message. */
+	while (regs->idr & INTEL_ADSP_IPC_BUSY) {
+		k_busy_wait(1);
+	}
+
+	/* check if host has pending acknowledge msg
+	 * Same signal, but on different bits in 1.5
+	 */
+	done = regs->ida & INTEL_ADSP_IPC_DONE;
+	if (done) {
+		/* IPC completion */
+		regs->ida = INTEL_ADSP_IPC_DONE;
+	}
+
+	regs->idd = ext_data;
+	regs->idr = data | INTEL_ADSP_IPC_BUSY;
+}
+
 #if DT_NODE_EXISTS(INTEL_ADSP_IPC_HOST_DTNODE)
 
 #if defined(CONFIG_SOC_SERIES_INTEL_ACE)
-#include <ace_v1x-regs.h>
-
 static inline void ace_ipc_intc_unmask(void)
 {
-	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
-		MTL_DINT[i].ie[MTL_INTL_HIPC] = BIT(0);
-	}
+	ACE_DINT[0].ie[ACE_INTL_HIPC] = BIT(0);
 }
 #else
 static inline void ace_ipc_intc_unmask(void) {}

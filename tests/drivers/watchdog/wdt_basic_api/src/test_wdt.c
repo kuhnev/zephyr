@@ -92,12 +92,20 @@
 #define WDT_NODE DT_INST(0, ti_cc32xx_watchdog)
 #elif DT_HAS_COMPAT_STATUS_OKAY(nxp_imx_wdog)
 #define WDT_NODE DT_INST(0, nxp_imx_wdog)
+#elif DT_HAS_COMPAT_STATUS_OKAY(gd_gd32_wwdgt)
+#define WDT_NODE DT_INST(0, gd_gd32_wwdgt)
+#elif DT_HAS_COMPAT_STATUS_OKAY(gd_gd32_fwdgt)
+#define WDT_NODE DT_INST(0, gd_gd32_fwdgt)
 #elif DT_HAS_COMPAT_STATUS_OKAY(zephyr_counter_watchdog)
 #define WDT_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_counter_watchdog)
 #endif
 #if DT_HAS_COMPAT_STATUS_OKAY(raspberrypi_pico_watchdog)
 #define WDT_TEST_MAX_WINDOW 20000U
 #define TIMEOUTS 0
+#endif
+#if DT_HAS_COMPAT_STATUS_OKAY(intel_tco_wdt)
+#define TIMEOUTS 0
+#define WDT_TEST_MAX_WINDOW 3000U
 #endif
 
 #define WDT_TEST_STATE_IDLE        0

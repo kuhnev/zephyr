@@ -68,6 +68,7 @@
 		pwm-led0 = &pwm_led;
 		eeprom-0 = &eeprom0;
 		spi-flash0 = &nor_flash;
+		watchdog0 = &fwdgt;
 	};
 };
 
@@ -92,6 +93,10 @@
 };
 
 &gpiof {
+	status = "okay";
+};
+
+&gpioi {
 	status = "okay";
 };
 
@@ -138,7 +143,7 @@
 	status = "okay";
 	pinctrl-0 = <&spi5_default>;
 	pinctrl-names = "default";
-	cs-gpios = <&gpiog 9 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpioi 8 GPIO_ACTIVE_LOW>;
 
 	nor_flash: gd25q16@0 {
 		compatible ="jedec,spi-nor";
@@ -148,4 +153,8 @@
 		status = "okay";
 		jedec-id = [c8 40 15];
 	};
+};
+
+&fwdgt {
+	status = "okay";
 };

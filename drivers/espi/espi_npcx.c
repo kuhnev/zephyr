@@ -21,6 +21,7 @@
 #include "soc_miwu.h"
 
 #include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(espi, CONFIG_ESPI_LOG_LEVEL);
 
 struct espi_npcx_config {
@@ -175,8 +176,8 @@ static const struct npcx_vw_out_config vw_out_gpio_tbl1[] = {
 };
 
 /* Callbacks for eSPI bus reset and Virtual Wire signals. */
-static struct miwu_dev_callback espi_rst_callback;
-static struct miwu_dev_callback vw_in_callback[ARRAY_SIZE(vw_in_tbl)];
+static struct miwu_callback espi_rst_callback;
+static struct miwu_callback vw_in_callback[ARRAY_SIZE(vw_in_tbl)];
 
 /* eSPI VW service function forward declarations */
 static int espi_npcx_receive_vwire(const struct device *dev,
@@ -187,7 +188,7 @@ static void espi_vw_send_bootload_done(const struct device *dev);
 
 /* eSPI local initialization functions */
 static void espi_init_wui_callback(const struct device *dev,
-		struct miwu_dev_callback *callback, const struct npcx_wui *wui,
+		struct miwu_callback *callback, const struct npcx_wui *wui,
 		miwu_dev_callback_handler_t handler)
 {
 	/* VW signal which has no wake-up input source */
@@ -196,12 +197,11 @@ static void espi_init_wui_callback(const struct device *dev,
 
 	/* Install callback function */
 	npcx_miwu_init_dev_callback(callback, wui, handler, dev);
-	npcx_miwu_manage_dev_callback(callback, 1);
+	npcx_miwu_manage_callback(callback, 1);
 
 	/* Configure MIWU setting and enable its interrupt */
 	npcx_miwu_interrupt_configure(wui, NPCX_MIWU_MODE_EDGE,
 							NPCX_MIWU_TRIG_BOTH);
-	npcx_miwu_irq_enable(wui);
 }
 
 /* eSPI local bus interrupt service functions */
@@ -1120,7 +1120,7 @@ static int espi_npcx_flash_erase(const struct device *dev,
 /* Platform specific espi module functions */
 void npcx_espi_enable_interrupts(const struct device *dev)
 {
-	ARG_UNUSED(dev);
+	const struct espi_npcx_config *const config = dev->config;
 
 	/* Enable eSPI bus interrupt */
 	irq_enable(DT_INST_IRQN(0));
@@ -1129,11 +1129,13 @@ void npcx_espi_enable_interrupts(const struct device *dev)
 	for (int idx = 0; idx < ARRAY_SIZE(vw_in_tbl); idx++) {
 		npcx_miwu_irq_enable(&(vw_in_tbl[idx].vw_wui));
 	}
+
+	npcx_miwu_irq_enable(&config->espi_rst_wui);
 }
 
 void npcx_espi_disable_interrupts(const struct device *dev)
 {
-	ARG_UNUSED(dev);
+	const struct espi_npcx_config *const config = dev->config;
 
 	/* Disable eSPI bus interrupt */
 	irq_disable(DT_INST_IRQN(0));
@@ -1142,6 +1144,8 @@ void npcx_espi_disable_interrupts(const struct device *dev)
 	for (int idx = 0; idx < ARRAY_SIZE(vw_in_tbl); idx++) {
 		npcx_miwu_irq_disable(&(vw_in_tbl[idx].vw_wui));
 	}
+
+	npcx_miwu_irq_disable(&config->espi_rst_wui);
 }
 
 /* eSPI driver registration */
@@ -1203,7 +1207,7 @@ static int espi_npcx_init(const struct device *dev)
 	}
 
 	/* Turn on eSPI device clock first */
-	ret = clock_control_on(clk_dev, (clock_control_subsys_t *)
+	ret = clock_control_on(clk_dev, (clock_control_subsys_t)
 							&config->clk_cfg);
 	if (ret < 0) {
 		LOG_ERR("Turn on eSPI clock fail %d", ret);

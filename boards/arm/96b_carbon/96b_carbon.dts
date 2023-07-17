@@ -32,7 +32,7 @@
 			label = "USR2 LED";
 		};
 		bt_blue_led: led_3 {
-			gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>;
 			label = "BT LED";
 		};
 	};
@@ -51,6 +51,10 @@
 		led2 = &bt_blue_led;
 		sw0 = &user_button;
 	};
+};
+
+&clk_lsi {
+	status = "okay";
 };
 
 &clk_hse {
@@ -175,5 +179,7 @@ zephyr_udc0: &usbotg_fs {
 };
 
 &rtc {
+	clocks = <&rcc STM32_CLOCK_BUS_APB1 0x10000000>,
+		 <&rcc STM32_SRC_LSI RTC_SEL(2)>;
 	status = "okay";
 };

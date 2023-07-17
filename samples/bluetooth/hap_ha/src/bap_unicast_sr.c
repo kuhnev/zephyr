@@ -1,7 +1,7 @@
 /** @file
  *  @brief Bluetooth Basic Audio Profile (BAP) Unicast Server role.
  *
- *  Copyright (c) 2021-2022 Nordic Semiconductor ASA
+ *  Copyright (c) 2021-2023 Nordic Semiconductor ASA
  *  Copyright (c) 2022 Codecoup
  *
  *  SPDX-License-Identifier: Apache-2.0
@@ -14,11 +14,12 @@
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/audio/audio.h>
-#include <zephyr/bluetooth/audio/capabilities.h>
+#include <zephyr/bluetooth/audio/bap.h>
+#include <zephyr/bluetooth/audio/pacs.h>
 
 NET_BUF_POOL_FIXED_DEFINE(tx_pool, CONFIG_BT_ASCS_ASE_SRC_COUNT,
 			  BT_ISO_SDU_BUF_SIZE(CONFIG_BT_ISO_TX_MTU),
-			  8, NULL);
+			  CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
 
 static struct bt_codec lc3_codec =
 	BT_CODEC_LC3(BT_CODEC_LC3_FREQ_16KHZ | BT_CODEC_LC3_FREQ_24KHZ,
@@ -28,14 +29,17 @@ static struct bt_codec lc3_codec =
 
 static struct bt_conn *default_conn;
 static struct k_work_delayable audio_send_work;
-static struct bt_audio_stream streams[CONFIG_BT_ASCS_ASE_SNK_COUNT + CONFIG_BT_ASCS_ASE_SRC_COUNT];
-static struct bt_audio_source {
-	struct bt_audio_stream *stream;
-	uint32_t seq_num;
+static struct bt_bap_stream streams[CONFIG_BT_ASCS_ASE_SNK_COUNT + CONFIG_BT_ASCS_ASE_SRC_COUNT];
+static struct audio_source {
+	struct bt_bap_stream *stream;
+	uint16_t seq_num;
 } source_streams[CONFIG_BT_ASCS_ASE_SRC_COUNT];
 static size_t configured_source_stream_count;
 
-static uint32_t get_and_incr_seq_num(const struct bt_audio_stream *stream)
+static const struct bt_codec_qos_pref qos_pref = BT_CODEC_QOS_PREF(true, BT_GAP_LE_PHY_2M, 0x02,
+								   10, 20000, 40000, 20000, 40000);
+
+static uint16_t get_and_incr_seq_num(const struct bt_bap_stream *stream)
 {
 	for (size_t i = 0U; i < configured_source_stream_count; i++) {
 		if (stream == source_streams[i].stream) {
@@ -73,7 +77,7 @@ static void print_codec(const struct bt_codec *codec)
 	if (codec->id == BT_CODEC_LC3_ID) {
 		/* LC3 uses the generic LTV format - other codecs might do as well */
 
-		uint32_t chan_allocation;
+		enum bt_audio_location chan_allocation;
 
 		printk("  Frequency: %d Hz\n", bt_codec_cfg_get_freq(codec));
 		printk("  Frame Duration: %d us\n", bt_codec_cfg_get_frame_duration_us(codec));
@@ -98,7 +102,7 @@ static void print_codec(const struct bt_codec *codec)
 	}
 }
 
-static void print_qos(struct bt_codec_qos *qos)
+static void print_qos(const struct bt_codec_qos *qos)
 {
 	printk("QoS: interval %u framing 0x%02x phy 0x%02x sdu %u "
 	       "rtn %u latency %u pd %u\n",
@@ -142,14 +146,14 @@ static void audio_timer_timeout(struct k_work *work)
 	 * data going to the server)
 	 */
 	for (size_t i = 0; i < configured_source_stream_count; i++) {
-		struct bt_audio_stream *stream = source_streams[i].stream;
+		struct bt_bap_stream *stream = source_streams[i].stream;
 
 		buf = net_buf_alloc(&tx_pool, K_FOREVER);
 		net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
 
 		net_buf_add_mem(buf, buf_data, len_to_send);
 
-		ret = bt_audio_stream_send(stream, buf,
+		ret = bt_bap_stream_send(stream, buf,
 					   get_and_incr_seq_num(stream),
 					   BT_ISO_TIMESTAMP_NONE);
 		if (ret < 0) {
@@ -170,45 +174,61 @@ static void audio_timer_timeout(struct k_work *work)
 	}
 }
 
-static struct bt_audio_stream *lc3_config(struct bt_conn *conn, struct bt_audio_ep *ep,
-					  enum bt_audio_dir dir, struct bt_audio_capability *cap,
-					  struct bt_codec *codec)
+static struct bt_bap_stream *stream_alloc(void)
 {
-	printk("ASE Codec Config: conn %p ep %p dir %u, cap %p\n",
-	       conn, ep, dir, cap);
-
-	print_codec(codec);
-
 	for (size_t i = 0; i < ARRAY_SIZE(streams); i++) {
-		struct bt_audio_stream *stream = &streams[i];
+		struct bt_bap_stream *stream = &streams[i];
 
 		if (!stream->conn) {
-			printk("ASE Codec Config stream %p\n", stream);
-			if (dir == BT_AUDIO_DIR_SOURCE) {
-				source_streams[configured_source_stream_count++].stream = stream;
-			}
-
 			return stream;
 		}
 	}
 
-	printk("No streams available\n");
-
 	return NULL;
 }
 
-static int lc3_reconfig(struct bt_audio_stream *stream, struct bt_audio_capability *cap,
-			struct bt_codec *codec)
+static int lc3_config(struct bt_conn *conn, const struct bt_bap_ep *ep, enum bt_audio_dir dir,
+		      const struct bt_codec *codec, struct bt_bap_stream **stream,
+		      struct bt_codec_qos_pref *const pref, struct bt_bap_ascs_rsp *rsp)
 {
-	printk("ASE Codec Reconfig: stream %p cap %p\n", stream, cap);
+	printk("ASE Codec Config: conn %p ep %p dir %u\n", conn, ep, dir);
 
 	print_codec(codec);
+
+	*stream = stream_alloc();
+	if (*stream == NULL) {
+		printk("No streams available\n");
+		*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_NO_MEM, BT_BAP_ASCS_REASON_NONE);
+		return -ENOMEM;
+	}
+
+	printk("ASE Codec Config stream %p\n", *stream);
+
+	if (dir == BT_AUDIO_DIR_SOURCE) {
+		source_streams[configured_source_stream_count++].stream = *stream;
+	}
+
+	*pref = qos_pref;
+
+	return 0;
+}
+
+static int lc3_reconfig(struct bt_bap_stream *stream, enum bt_audio_dir dir,
+			const struct bt_codec *codec, struct bt_codec_qos_pref *const pref,
+			struct bt_bap_ascs_rsp *rsp)
+{
+	printk("ASE Codec Reconfig: stream %p\n", stream);
+
+	print_codec(codec);
+
+	*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED, BT_BAP_ASCS_REASON_NONE);
 
 	/* We only support one QoS at the moment, reject changes */
 	return -ENOEXEC;
 }
 
-static int lc3_qos(struct bt_audio_stream *stream, struct bt_codec_qos *qos)
+static int lc3_qos(struct bt_bap_stream *stream, const struct bt_codec_qos *qos,
+		   struct bt_bap_ascs_rsp *rsp)
 {
 	printk("QoS: stream %p qos %p\n", stream, qos);
 
@@ -217,15 +237,15 @@ static int lc3_qos(struct bt_audio_stream *stream, struct bt_codec_qos *qos)
 	return 0;
 }
 
-static int lc3_enable(struct bt_audio_stream *stream, struct bt_codec_data *meta,
-		      size_t meta_count)
+static int lc3_enable(struct bt_bap_stream *stream, const struct bt_codec_data *meta,
+		      size_t meta_count, struct bt_bap_ascs_rsp *rsp)
 {
 	printk("Enable: stream %p meta_count %u\n", stream, meta_count);
 
 	return 0;
 }
 
-static int lc3_start(struct bt_audio_stream *stream)
+static int lc3_start(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *rsp)
 {
 	printk("Start: stream %p\n", stream);
 
@@ -291,15 +311,19 @@ static bool valid_metadata_type(uint8_t type, uint8_t len)
 	}
 }
 
-static int lc3_metadata(struct bt_audio_stream *stream, struct bt_codec_data *meta,
-			size_t meta_count)
+static int lc3_metadata(struct bt_bap_stream *stream, const struct bt_codec_data *meta,
+			size_t meta_count, struct bt_bap_ascs_rsp *rsp)
 {
 	printk("Metadata: stream %p meta_count %u\n", stream, meta_count);
 
 	for (size_t i = 0; i < meta_count; i++) {
-		if (!valid_metadata_type(meta->data.type, meta->data.data_len)) {
+		const struct bt_codec_data *data = &meta[i];
+
+		if (!valid_metadata_type(data->data.type, data->data.data_len)) {
 			printk("Invalid metadata type %u or length %u\n",
-			       meta->data.type, meta->data.data_len);
+			       data->data.type, data->data.data_len);
+			*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_METADATA_REJECTED,
+					       data->data.type);
 
 			return -EINVAL;
 		}
@@ -308,27 +332,27 @@ static int lc3_metadata(struct bt_audio_stream *stream, struct bt_codec_data *me
 	return 0;
 }
 
-static int lc3_disable(struct bt_audio_stream *stream)
+static int lc3_disable(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *rsp)
 {
 	printk("Disable: stream %p\n", stream);
 
 	return 0;
 }
 
-static int lc3_stop(struct bt_audio_stream *stream)
+static int lc3_stop(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *rsp)
 {
 	printk("Stop: stream %p\n", stream);
 
 	return 0;
 }
 
-static int lc3_release(struct bt_audio_stream *stream)
+static int lc3_release(struct bt_bap_stream *stream, struct bt_bap_ascs_rsp *rsp)
 {
 	printk("Release: stream %p\n", stream);
 	return 0;
 }
 
-static struct bt_audio_capability_ops lc3_ops = {
+static const struct bt_bap_unicast_server_cb unicast_server_cb = {
 	.config = lc3_config,
 	.reconfig = lc3_reconfig,
 	.qos = lc3_qos,
@@ -340,13 +364,13 @@ static struct bt_audio_capability_ops lc3_ops = {
 	.release = lc3_release,
 };
 
-static void stream_recv(struct bt_audio_stream *stream, const struct bt_iso_recv_info *info,
+static void stream_recv(struct bt_bap_stream *stream, const struct bt_iso_recv_info *info,
 			struct net_buf *buf)
 {
 	printk("Incoming audio on stream %p len %u\n", stream, buf->len);
 }
 
-static struct bt_audio_stream_ops stream_ops = {
+static struct bt_bap_stream_ops stream_ops = {
 	.recv = stream_recv
 };
 
@@ -396,37 +420,45 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.disconnected = disconnected,
 };
 
-static struct bt_audio_capability caps[] = {
-	{
-		.dir = BT_AUDIO_DIR_SINK,
-		.pref = BT_AUDIO_CAPABILITY_PREF(
-				BT_AUDIO_CAPABILITY_UNFRAMED_SUPPORTED,
-				BT_GAP_LE_PHY_2M, 0x02, 10, 20000, 40000,
-				20000, 40000),
-		.codec = &lc3_codec,
-		.ops = &lc3_ops,
-	},
-#if defined(CONFIG_BT_ASCS_ASE_SRC)
-	{
-		.dir = BT_AUDIO_DIR_SOURCE,
-		.pref = BT_AUDIO_CAPABILITY_PREF(
-				BT_AUDIO_CAPABILITY_UNFRAMED_SUPPORTED,
-				BT_GAP_LE_PHY_2M, 0x02, 10, 20000, 40000,
-				20000, 40000),
-		.codec = &lc3_codec,
-		.ops = &lc3_ops,
-	}
-#endif /* CONFIG_BT_ASCS_ASE_SRC */
+static struct bt_pacs_cap cap_sink = {
+	.codec = &lc3_codec,
+};
+
+static struct bt_pacs_cap cap_source = {
+	.codec = &lc3_codec,
 };
 
 int bap_unicast_sr_init(void)
 {
-	for (size_t i = 0; i < ARRAY_SIZE(caps); i++) {
-		bt_audio_capability_register(&caps[i]);
+	bt_bap_unicast_server_register_cb(&unicast_server_cb);
+
+	bt_pacs_cap_register(BT_AUDIO_DIR_SINK, &cap_sink);
+
+	if (IS_ENABLED(CONFIG_BT_PAC_SNK_LOC)) {
+		if (IS_ENABLED(CONFIG_HAP_HA_HEARING_AID_BANDED)) {
+			/* HAP_d1.0r00; 3.7 BAP Unicast Server role requirements
+			 * A Banded Hearing Aid in the HA role shall set the
+			 * Front Left and the Front Right bits to a value of 0b1
+			 * in the Sink Audio Locations characteristic value.
+			 */
+			bt_pacs_set_location(BT_AUDIO_DIR_SINK,
+					     (BT_AUDIO_LOCATION_FRONT_LEFT |
+					      BT_AUDIO_LOCATION_FRONT_RIGHT));
+		} else if (IS_ENABLED(CONFIG_HAP_HA_HEARING_AID_LEFT)) {
+			bt_pacs_set_location(BT_AUDIO_DIR_SINK,
+					     BT_AUDIO_LOCATION_FRONT_LEFT);
+		} else {
+			bt_pacs_set_location(BT_AUDIO_DIR_SINK,
+					     BT_AUDIO_LOCATION_FRONT_RIGHT);
+		}
+	}
+
+	if (IS_ENABLED(CONFIG_BT_ASCS_ASE_SRC)) {
+		bt_pacs_cap_register(BT_AUDIO_DIR_SOURCE, &cap_source);
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(streams); i++) {
-		bt_audio_stream_cb_register(&streams[i], &stream_ops);
+		bt_bap_stream_cb_register(&streams[i], &stream_ops);
 	}
 
 	if (IS_ENABLED(CONFIG_BT_ASCS_ASE_SRC)) {

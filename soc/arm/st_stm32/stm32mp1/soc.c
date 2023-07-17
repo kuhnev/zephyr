@@ -16,6 +16,8 @@
 #include <stm32_ll_bus.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/arch/arm/aarch32/nmi.h>
+#include <zephyr/irq.h>
 
 /**
  * @brief Perform basic hardware initialization at boot.
@@ -25,11 +27,10 @@
  *
  * @return 0
  */
-static int stm32m4_init(const struct device *arg)
+static int stm32m4_init(void)
 {
 	uint32_t key;
 
-	ARG_UNUSED(arg);
 
 	key = irq_lock();
 

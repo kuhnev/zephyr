@@ -37,7 +37,7 @@ FPGAIO_INIT(2);
 /* The base address that the application image will start at on the secondary
  * (non-TrustZone) Cortex-M33 mcu.
  */
-#define CPU1_FLASH_ADDRESS      (0x100000)
+#define CPU1_FLASH_ADDRESS      (0x38B000)
 
 /* The memory map offset for the application image, which is used
  * to determine the location of the reset vector at startup.
@@ -76,9 +76,8 @@ uint32_t sse_200_platform_get_cpu_id(void)
  *
  * @return 0
  */
-static int arm_mps2_init(const struct device *arg)
+static int arm_mps2_init(void)
 {
-	ARG_UNUSED(arg);
 
 	/*
 	 * Install default handler that simply resets the CPU

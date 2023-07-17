@@ -10,10 +10,12 @@
 
 #include <errno.h>
 #include <soc.h>
+#include <zephyr/arch/cpu.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/renesas_cpg_mssr.h>
 #include <zephyr/dt-bindings/clock/renesas_cpg_mssr.h>
 #include <zephyr/dt-bindings/clock/r8a7795_cpg_mssr.h>
+#include <zephyr/irq.h>
 #include "clock_control_renesas_cpg_mssr.h"
 
 #define LOG_LEVEL CONFIG_CLOCK_CONTROL_LOG_LEVEL
@@ -132,12 +134,6 @@ static int r8a7795_cpg_get_rate(const struct device *dev,
 	return ret;
 }
 
-static int r8a7795_cpg_mssr_init(const struct device *dev)
-{
-	ARG_UNUSED(dev);
-	return 0;
-}
-
 static const struct clock_control_driver_api r8a7795_cpg_mssr_api = {
 	.on = r8a7795_cpg_mssr_start,
 	.off = r8a7795_cpg_mssr_stop,
@@ -150,7 +146,7 @@ static const struct clock_control_driver_api r8a7795_cpg_mssr_api = {
 	};									  \
 										  \
 	DEVICE_DT_INST_DEFINE(inst,						  \
-			      &r8a7795_cpg_mssr_init,				  \
+			      NULL,						  \
 			      NULL,						  \
 			      NULL, &r8a7795_cpg_mssr##inst##_config,		  \
 			      PRE_KERNEL_1,					  \

@@ -27,7 +27,9 @@ void z_pm_save_idle_exit(void)
 	 */
 	pm_system_resume();
 #endif	/* CONFIG_PM */
+#ifdef CONFIG_SYS_CLOCK_EXISTS
 	sys_clock_idle_exit();
+#endif
 }
 
 void idle(void *unused1, void *unused2, void *unused3)
@@ -47,10 +49,10 @@ void idle(void *unused1, void *unused2, void *unused3)
 		 * lock and/or timer driver.  This is intended as a
 		 * fallback configuration for new platform bringup.
 		 */
-		if (IS_ENABLED(CONFIG_SMP) &&
-		    !IS_ENABLED(CONFIG_SCHED_IPI_SUPPORTED)) {
-			for (volatile int i = 0; i < 100000; i++)
-				;
+		if (IS_ENABLED(CONFIG_SMP) && !IS_ENABLED(CONFIG_SCHED_IPI_SUPPORTED)) {
+			for (volatile int i = 0; i < 100000; i++) {
+				/* Empty loop */
+			}
 			z_swap_unlocked();
 		}
 
@@ -103,4 +105,12 @@ void idle(void *unused1, void *unused2, void *unused3)
 # endif
 #endif
 	}
+}
+
+void __weak arch_spin_relax(void)
+{
+	__ASSERT(!arch_irq_unlocked(arch_irq_lock()),
+		 "this is meant to be called with IRQs disabled");
+
+	arch_nop();
 }

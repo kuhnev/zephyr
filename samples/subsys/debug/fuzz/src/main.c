@@ -3,6 +3,7 @@
  */
 #include <zephyr/kernel.h>
 #include <string.h>
+#include <zephyr/irq.h>
 
 /* Fuzz testing is coverage-based, so we want to hide a failure case
  * (a write through a null pointer in this case) down inside a call
@@ -61,7 +62,7 @@ static void fuzz_isr(const void *arg)
 	k_sem_give(&fuzz_sem);
 }
 
-void main(void)
+int main(void)
 {
 	printk("Hello World! %s\n", CONFIG_BOARD);
 
@@ -76,4 +77,5 @@ void main(void)
 		 */
 		check0(posix_fuzz_buf, posix_fuzz_sz);
 	}
+	return 0;
 }

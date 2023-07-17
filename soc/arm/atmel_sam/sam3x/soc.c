@@ -19,6 +19,7 @@
 #include <soc.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/irq.h>
 
 /*
  * PLL clock = Main * (MULA + 1) / DIVA
@@ -201,11 +202,10 @@ static ALWAYS_INLINE void clock_init(void)
  *
  * @return 0
  */
-static int atmel_sam3x_init(const struct device *arg)
+static int atmel_sam3x_init(void)
 {
 	uint32_t key;
 
-	ARG_UNUSED(arg);
 
 	key = irq_lock();
 

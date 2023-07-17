@@ -228,12 +228,12 @@ static int pwm_rcar_init(const struct device *dev)
 		return ret;
 	}
 
-	ret = clock_control_on(config->clock_dev, (clock_control_subsys_t *)&config->mod_clk);
+	ret = clock_control_on(config->clock_dev, (clock_control_subsys_t)&config->mod_clk);
 	if (ret < 0) {
 		return ret;
 	}
 
-	ret = clock_control_get_rate(config->clock_dev, (clock_control_subsys_t *)&config->core_clk,
+	ret = clock_control_get_rate(config->clock_dev, (clock_control_subsys_t)&config->core_clk,
 				     &data->clk_rate);
 
 	if (ret < 0) {
@@ -262,7 +262,7 @@ static const struct pwm_driver_api pwm_rcar_driver_api = {
 	};                                                                                         \
 	static struct pwm_rcar_data pwm_rcar_data_##n;                                             \
 	DEVICE_DT_INST_DEFINE(n, pwm_rcar_init, NULL, &pwm_rcar_data_##n, &pwm_rcar_cfg_##n,       \
-			      POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,                     \
+			      POST_KERNEL, CONFIG_PWM_INIT_PRIORITY,                               \
 			      &pwm_rcar_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(PWM_DEVICE_RCAR_INIT)

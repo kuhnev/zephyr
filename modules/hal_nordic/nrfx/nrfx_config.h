@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 - 2020, Nordic Semiconductor ASA
+ * Copyright (c) 2019 - 2022, Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,6 +8,12 @@
 #define NRFX_CONFIG_H__
 
 #include <zephyr/devicetree.h>
+
+/*
+ * NRFX API version 2.10 flag.
+ * When the flag is set NRFX API is compatible with the newest NRFX release.
+ */
+#define NRFX_CONFIG_API_VER_2_10 1
 
 /*
  * These are mappings of Kconfig options enabling nrfx drivers and particular
@@ -105,6 +111,9 @@
 #ifdef CONFIG_NRFX_I2S
 #define NRFX_I2S_ENABLED 1
 #endif
+#ifdef CONFIG_NRFX_I2S0
+#define NRFX_I2S0_ENABLED 1
+#endif
 
 #ifdef CONFIG_NRFX_IPC
 #define NRFX_IPC_ENABLED 1
@@ -172,6 +181,12 @@
 #ifdef CONFIG_NRFX_QDEC
 #define NRFX_QDEC_ENABLED 1
 #endif
+#ifdef CONFIG_NRFX_QDEC0
+#define NRFX_QDEC0_ENABLED 1
+#endif
+#ifdef CONFIG_NRFX_QDEC1
+#define NRFX_QDEC1_ENABLED 1
+#endif
 
 #ifdef CONFIG_NRFX_QSPI
 #define NRFX_QSPI_ENABLED 1
@@ -225,6 +240,9 @@
 #endif
 #ifdef CONFIG_NRFX_SPIM3
 #define NRFX_SPIM3_ENABLED 1
+#ifdef CONFIG_NRF52_ANOMALY_198_WORKAROUND
+#define NRFX_SPIM3_NRF52840_ANOMALY_198_WORKAROUND_ENABLED 1
+#endif
 #endif
 #ifdef CONFIG_NRFX_SPIM4
 #define NRFX_SPIM4_ENABLED 1
@@ -378,7 +396,7 @@
 #define NRF_PERIPH(P) P##_S
 #endif
 
-
+#include <nrfx_config_common.h>
 #if defined(NRF51)
     #include <nrfx_config_nrf51.h>
 #elif defined(NRF52805_XXAA)
@@ -399,11 +417,10 @@
     #include <nrfx_config_nrf5340_application.h>
 #elif defined(NRF5340_XXAA_NETWORK)
     #include <nrfx_config_nrf5340_network.h>
-#elif defined(NRF9160_XXAA)
-    #include <nrfx_config_nrf9160.h>
+#elif defined(NRF9120_XXAA) || defined(NRF9160_XXAA)
+    #include <nrfx_config_nrf91.h>
 #else
     #error "Unknown device."
 #endif
-
 
 #endif // NRFX_CONFIG_H__

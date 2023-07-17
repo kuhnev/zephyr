@@ -34,34 +34,29 @@ enum lorawan_services_port {
  * @brief Send unconfirmed LoRaWAN uplink message after the specified timeout
  *
  * @param port       Port to be used for sending data.
- * @param data       Data buffer to be sent
- * @param len        Length of the buffer to be sent. Maximum length of this
- *                   buffer is 255 bytes but the actual payload size varies with
- *                   region and datarate.
- * @param timeout    Timeout when the uplink message should be scheduled.
+ * @param data       Data buffer to be sent.
+ * @param len        Length of the data to be sent. Maximum length of the
+ *                   buffer is 18 bytes.
+ * @param timeout    Relative timeout in milliseconds when the uplink message
+ *                   should be scheduled.
  *
  * @return 0 if message was successfully queued, negative errno otherwise.
  */
-int lorawan_services_schedule_uplink(uint8_t port, uint8_t *data, uint8_t len, k_timeout_t timeout);
+int lorawan_services_schedule_uplink(uint8_t port, uint8_t *data, uint8_t len, uint32_t timeout);
 
 /**
- * @brief Get the work queue handle for LoRaWAN services
+ * @brief Reschedule a delayable work item to the LoRaWAN services work queue
  *
  * This work queue is used to schedule the uplink messages, but can be used by
  * any of the services for internal tasks.
  *
- * @returns Services work queue handle
- */
-struct k_work_q *lorawan_services_get_work_queue(void);
+ * @param dwork pointer to the delayable work item.
+ * @param delay the time to wait before submitting the work item.
 
-/**
- * @brief Start a class C session
- *
- * If there is already an ongoing class C session, only the internal counter of
- * active sessions is increased.
- *
- * @returns Number of active sessions if successful or negative errno otherwise.
+ * @returns Result of call to k_work_reschedule_for_queue()
  */
+int lorawan_services_reschedule_work(struct k_work_delayable *dwork, k_timeout_t delay);
+
 int lorawan_services_class_c_start(void);
 
 /**

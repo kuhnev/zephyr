@@ -89,10 +89,10 @@ struct _thread_base {
 	 */
 	union {
 		struct {
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#ifdef CONFIG_BIG_ENDIAN
 			uint8_t sched_locked;
 			int8_t prio;
-#else /* LITTLE and PDP */
+#else /* Little Endian */
 			int8_t prio;
 			uint8_t sched_locked;
 #endif
@@ -264,6 +264,9 @@ struct k_thread {
 
 	uint32_t   events;
 	uint32_t   event_options;
+
+	/** true if timeout should not wake the thread */
+	bool no_wake_on_timeout;
 #endif
 
 #if defined(CONFIG_THREAD_MONITOR)

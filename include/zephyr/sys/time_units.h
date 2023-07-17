@@ -8,6 +8,7 @@
 #define ZEPHYR_INCLUDE_TIME_UNITS_H_
 
 #include <zephyr/toolchain.h>
+#include <zephyr/sys/util.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,7 +77,7 @@ static TIME_CONSTEXPR inline int sys_clock_hw_cycles_per_sec(void)
  * @retval false Use algorithm preventing overflow of intermediate value.
  */
 #define Z_TMCVT_USE_FAST_ALGO(from_hz, to_hz) \
-	((ceiling_fraction(CONFIG_SYS_CLOCK_MAX_TIMEOUT_DAYS * 24ULL * 3600ULL * from_hz, \
+	((DIV_ROUND_UP(CONFIG_SYS_CLOCK_MAX_TIMEOUT_DAYS * 24ULL * 3600ULL * from_hz, \
 			   UINT32_MAX) * to_hz) <= UINT32_MAX)
 
 /* Time converter generator gadget.  Selects from one of three

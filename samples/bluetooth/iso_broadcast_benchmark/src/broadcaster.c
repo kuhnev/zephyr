@@ -24,7 +24,8 @@ LOG_MODULE_REGISTER(iso_broadcast_broadcaster, LOG_LEVEL_DBG);
 #define DEFAULT_BIS_COUNT       CONFIG_BT_ISO_MAX_CHAN
 
 NET_BUF_POOL_FIXED_DEFINE(bis_tx_pool, CONFIG_BT_ISO_TX_BUF_COUNT,
-			  BT_ISO_SDU_BUF_SIZE(CONFIG_BT_ISO_TX_MTU), 8, NULL);
+			  BT_ISO_SDU_BUF_SIZE(CONFIG_BT_ISO_TX_MTU),
+			  CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
 
 static K_SEM_DEFINE(sem_big_complete, 0, 1);
 static K_SEM_DEFINE(sem_big_term, 0, 1);
@@ -36,7 +37,7 @@ static uint8_t connected_bis;
 static struct bt_iso_chan bis_iso_chans[CONFIG_BT_ISO_MAX_CHAN];
 static struct bt_iso_chan *bis[CONFIG_BT_ISO_MAX_CHAN];
 /* We use a single seq_num for all the BIS as they share the same SDU interval */
-static uint32_t seq_num;
+static uint16_t seq_num;
 static struct bt_iso_big_create_param big_create_param = {
 	.num_bis = DEFAULT_BIS_COUNT,
 	.bis_channels = bis,

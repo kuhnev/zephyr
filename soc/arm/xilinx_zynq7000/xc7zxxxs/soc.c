@@ -3,13 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/arch/cpu.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/init.h>
 #include <zephyr/sys/sys_io.h>
 #include <zephyr/sys/util.h>
 
+#include <zephyr/arch/arm/aarch32/cortex_a_r/cmsis.h>
 #include <zephyr/arch/arm/aarch32/mmu/arm_mmu.h>
+#include <zephyr/arch/arm/aarch32/nmi.h>
 #include "soc.h"
 
 /* System Level Configuration Registers */
@@ -75,9 +78,8 @@ const struct arm_mmu_config mmu_config = {
  *
  * @return 0
  */
-static int soc_xlnx_zynq7000s_init(const struct device *arg)
+static int soc_xlnx_zynq7000s_init(void)
 {
-	ARG_UNUSED(arg);
 	NMI_INIT();
 
 	return 0;

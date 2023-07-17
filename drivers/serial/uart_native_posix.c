@@ -18,8 +18,10 @@
 #include <poll.h>
 
 #include <zephyr/drivers/uart.h>
+#include <zephyr/kernel.h>
+
 #include "cmdline.h" /* native_posix command line options header */
-#include "soc.h"
+#include "posix_native_task.h"
 
 /*
  * UART driver for POSIX ARCH based boards.
@@ -195,7 +197,18 @@ static int open_tty(struct native_uart_status *driver_data,
 		 * The connection of the client would cause the HUP flag to be
 		 * cleared, and in turn set again at disconnect.
 		 */
-		close(open(slave_pty_name, O_RDWR | O_NOCTTY));
+		ret = open(slave_pty_name, O_RDWR | O_NOCTTY);
+		if (ret == -1) {
+			err_nbr = errno;
+			ERROR("%s: Could not open terminal from the slave side (%i,%s)\n",
+				__func__, err_nbr, strerror(err_nbr));
+		}
+		ret = close(ret);
+		if (ret == -1) {
+			err_nbr = errno;
+			ERROR("%s: Could not close terminal from the slave side (%i,%s)\n",
+				__func__, err_nbr, strerror(err_nbr));
+		}
 	}
 	if (do_auto_attach) {
 		attach_to_tty(slave_pty_name);
@@ -279,7 +292,20 @@ static void np_uart_poll_out(const struct device *dev,
 		struct pollfd pfd = { .fd = d->out_fd, .events = POLLHUP };
 
 		while (1) {
-			poll(&pfd, 1, 0);
+			ret = poll(&pfd, 1, 0);
+			if (ret == -1) {
+				int err = errno;
+				/*
+				 * Possible errors are:
+				 *  * EINTR :A signal was received => ok
+				 *  * EFAULT and EINVAL: parameters/programming error
+				 *  * ENOMEM no RAM left
+				 */
+				if (err != EINTR) {
+					ERROR("%s: unexpected error during poll, errno=%i,%s\n",
+						__func__, err, strerror(err));
+				}
+			}
 			if (!(pfd.revents & POLLHUP)) {
 				/* There is now a reader on the slave side */
 				break;
@@ -337,7 +363,7 @@ static int np_uart_stdin_poll_in(const struct device *dev,
 	}
 
 	n = read(in_f, p_char, 1);
-	if (n == -1) {
+	if ((n == -1) || (n == 0)) {
 		return -1;
 	}
 

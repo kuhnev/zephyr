@@ -11,7 +11,7 @@
  * @file
  * @brief Public LoRaWAN APIs
  * @defgroup lorawan_api LoRaWAN APIs
- * @ingroup subsystem
+ * @ingroup connectivity
  * @{
  */
 
@@ -59,6 +59,22 @@ enum lorawan_datarate {
 	LORAWAN_DR_13,
 	LORAWAN_DR_14,
 	LORAWAN_DR_15,
+};
+
+/**
+ * @brief LoRaWAN region types.
+ */
+enum lorawan_region {
+	LORAWAN_REGION_AS923,
+	LORAWAN_REGION_AU915,
+	LORAWAN_REGION_CN470,
+	LORAWAN_REGION_CN779,
+	LORAWAN_REGION_EU433,
+	LORAWAN_REGION_EU868,
+	LORAWAN_REGION_KR920,
+	LORAWAN_REGION_IN865,
+	LORAWAN_REGION_US915,
+	LORAWAN_REGION_RU864,
 };
 
 /**
@@ -115,28 +131,6 @@ struct lorawan_join_config {
 	uint8_t *dev_eui;
 
 	enum lorawan_act_type mode;
-};
-
-struct lorawan_local_mcast_group {
-	uint32_t addr;
-	/**
-	 * Next frame counter value of the multicast downlink to be sent
-	*/
-	uint32_t fcnt_min;
-	/**
-	 * Lifetime of this multicast group expressed as a maximum number
-	*/
-	uint32_t fcnt_max;
-
-	/*
-	* Multicast application session key
-	*/
-	uint8_t *mc_app_skey;
-	/*
-	* Multicast network session key
-	*/
-	uint8_t *mc_nwk_skey;
-
 };
 
 #define LW_RECV_PORT_ANY UINT16_MAX
@@ -218,13 +212,6 @@ void lorawan_register_dr_changed_callback(void (*dr_cb)(enum lorawan_datarate));
 int lorawan_join(const struct lorawan_join_config *config);
 
 /**
- * @brief Check if LoRaWAN network is activated.
- * 
- * @return true if activated, false otherwise
-*/
-bool lorawan_is_activated(void);
-
-/**
  * @brief Start the LoRaWAN stack
  *
  * This function need to be called before joining the network.
@@ -262,16 +249,6 @@ int lorawan_send(uint8_t port, uint8_t *data, uint8_t len, enum lorawan_message_
  * @return 0 if successful, negative errno code if failure
  */
 int lorawan_set_class(enum lorawan_class dev_class);
-
-
-/**
- * @brief Get the current device class
- * 
- * Query the current device class.
- *
- * @return Current device class
- */
-enum lorawan_class lorawan_get_class(void);
 
 /**
  * @brief Set the number of tries used for transmissions
@@ -329,6 +306,18 @@ enum lorawan_datarate lorawan_get_min_datarate(void);
 void lorawan_get_payload_sizes(uint8_t *max_next_payload_size,
 			       uint8_t *max_payload_size);
 
+/**
+ * @brief Set the region and frequency to be used
+ *
+ * Control the LoRa region and frequency settings. This should be called before
+ * @a lorawan_start(). If you only have support for a single region selected via
+ * Kconfig, this function does not need to be called at all.
+ *
+ * @param region The region to be selected
+ * @return 0 if successful, negative errno otherwise
+ */
+int lorawan_set_region(enum lorawan_region region);
+
 #ifdef CONFIG_LORAWAN_APP_CLOCK_SYNC
 
 /**
@@ -360,39 +349,6 @@ int lorawan_clock_sync_run(void);
 int lorawan_clock_sync_get(uint32_t *gps_time);
 
 #endif /* CONFIG_LORAWAN_APP_CLOCK_SYNC */
-
-#ifdef CONFIG_LORAWAN_FRAG_TRANSPORT
-
-/**
- * @brief Run Fragmented Data Block Transport service
- *
- * This service receives fragmented data (usually firmware images) and
- * stores them in the image-1 flash partition.
- *
- * After all fragments have been received, the provided callback is invoked.
- *
- * @param transport_finished_cb Callback for notification of finished data transfer.
- */
-int lorawan_frag_transport_run(void (*transport_finished_cb)(void));
-
-#endif /* CONFIG_LORAWAN_FRAG_TRANSPORT */
-
-#ifdef CONFIG_LORAWAN_REMOTE_MULTICAST
-
-/**
- * @brief Run Remote Multicast Setup service
- *
- * This service is responsible for multicast session key exchange and setting
- * up a class C session. The keys are stored in the non-volatile memory.
- *
- * @return 0 if successful, negative errno otherwise.
- */
-int lorawan_remote_multicast_run(void);
-
-
-int lorawan_local_multicast_setup(const struct lorawan_local_mcast_group *group_cfg, uint8_t id);
-
-#endif /* CONFIG_LORAWAN_REMOTE_MULTICAST */
 
 #ifdef __cplusplus
 }

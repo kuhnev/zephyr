@@ -122,7 +122,7 @@ __no_optimization static void trigger_fault_divide_zero(void)
 	defined(CONFIG_ARMV6_M_ARMV8_M_BASELINE) || \
 	defined(CONFIG_BOARD_QEMU_CORTEX_R5) || \
 	defined(CONFIG_BOARD_FVP_BASER_AEMV8R) || defined(CONFIG_BOARD_FVP_BASE_REVC_2XAEMV8A) || \
-	defined(CONFIG_BOARD_FVP_BASER_AEMV8R_AARCH32)
+	defined(CONFIG_BOARD_FVP_BASER_AEMV8R_AARCH32) || defined(CONFIG_SOC_NSIM_EM11D)
 	ztest_test_skip();
 #endif
 }
@@ -372,12 +372,14 @@ static void *fail_assume_in_setup_setup(void)
 
 ZTEST_SUITE(fail_assume_in_setup, NULL, fail_assume_in_setup_setup, NULL, NULL, NULL);
 
+ZTEST_EXPECT_SKIP(fail_assume_in_setup, test_to_skip0);
 ZTEST(fail_assume_in_setup, test_to_skip0)
 {
 	/* This test should never be run */
 	ztest_test_fail();
 }
 
+ZTEST_EXPECT_SKIP(fail_assume_in_setup, test_to_skip1);
 ZTEST(fail_assume_in_setup, test_to_skip1)
 {
 	/* This test should never be run */
@@ -392,12 +394,14 @@ static void fail_assume_in_before_before(void *unused)
 
 ZTEST_SUITE(fail_assume_in_before, NULL, NULL, fail_assume_in_before_before, NULL, NULL);
 
+ZTEST_EXPECT_SKIP(fail_assume_in_before, test_to_skip0);
 ZTEST(fail_assume_in_before, test_to_skip0)
 {
 	/* This test should never be run */
 	ztest_test_fail();
 }
 
+ZTEST_EXPECT_SKIP(fail_assume_in_before, test_to_skip1);
 ZTEST(fail_assume_in_before, test_to_skip1)
 {
 	/* This test should never be run */
@@ -406,6 +410,7 @@ ZTEST(fail_assume_in_before, test_to_skip1)
 
 ZTEST_SUITE(fail_assume_in_test, NULL, NULL, NULL, NULL, NULL);
 
+ZTEST_EXPECT_SKIP(fail_assume_in_test, test_to_skip);
 ZTEST(fail_assume_in_test, test_to_skip)
 {
 	zassume_true(false);

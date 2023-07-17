@@ -4,17 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/kernel.h>
+#include <zephyr/arch/cpu.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sw_isr_table.h>
 #include <zephyr/dt-bindings/interrupt-controller/arm-gic.h>
 #include <zephyr/drivers/interrupt_controller/gic.h>
+#include <zephyr/sys/barrier.h>
 #include "intc_gic_common_priv.h"
 #include "intc_gicv3_priv.h"
 
 #include <string.h>
 
 /* Redistributor base addresses for each core */
-mem_addr_t gic_rdists[CONFIG_MP_NUM_CPUS];
+mem_addr_t gic_rdists[CONFIG_MP_MAX_NUM_CPUS];
 
 #if defined(CONFIG_ARMV8_A_NS) || defined(CONFIG_GIC_SINGLE_SECURITY_STATE)
 #define IGROUPR_VAL	0xFFFFFFFFU
@@ -78,7 +81,7 @@ static void arm_gic_lpi_setup(unsigned int intid, bool enable)
 		*cfg &= ~BIT(0);
 	}
 
-	dsb();
+	barrier_dsync_fence_full();
 
 	its_rdist_invall();
 }
@@ -90,7 +93,7 @@ static void arm_gic_lpi_set_priority(unsigned int intid, unsigned int prio)
 	*cfg &= 0xfc;
 	*cfg |= prio & 0xfc;
 
-	dsb();
+	barrier_dsync_fence_full();
 
 	its_rdist_invall();
 }
@@ -210,6 +213,25 @@ bool arm_gic_irq_is_enabled(unsigned int intid)
 	return (val & mask) != 0;
 }
 
+bool arm_gic_irq_is_pending(unsigned int intid)
+{
+	uint32_t mask = BIT(intid & (GIC_NUM_INTR_PER_REG - 1));
+	uint32_t idx = intid / GIC_NUM_INTR_PER_REG;
+	uint32_t val;
+
+	val = sys_read32(ISPENDR(GET_DIST_BASE(intid), idx));
+
+	return (val & mask) != 0;
+}
+
+void arm_gic_irq_clear_pending(unsigned int intid)
+{
+	uint32_t mask = BIT(intid & (GIC_NUM_INTR_PER_REG - 1));
+	uint32_t idx = intid / GIC_NUM_INTR_PER_REG;
+
+	sys_write32(mask, ICPENDR(GET_DIST_BASE(intid), idx));
+}
+
 unsigned int arm_gic_get_active(void)
 {
 	int intid;
@@ -233,7 +255,7 @@ void arm_gic_eoi(unsigned int intid)
 	 * The dsb will also ensure *completion* of previous writes with
 	 * DEVICE nGnRnE attribute.
 	 */
-	__DSB();
+	barrier_dsync_fence_full();
 
 	/* (AP -> Pending) Or (Active -> Inactive) or (AP to AP) nested case */
 	write_sysreg(intid, ICC_EOIR1_EL1);
@@ -259,9 +281,9 @@ void gic_raise_sgi(unsigned int sgi_id, uint64_t target_aff,
 	sgi_val = GICV3_SGIR_VALUE(aff3, aff2, aff1, sgi_id,
 				   SGIR_IRM_TO_AFF, target_list);
 
-	__DSB();
+	barrier_dsync_fence_full();
 	write_sysreg(sgi_val, ICC_SGI1R);
-	__ISB();
+	barrier_isync_fence_full();
 }
 
 /*
@@ -330,7 +352,7 @@ static void gicv3_rdist_setup_lpis(mem_addr_t rdist)
 	ctlr |= GICR_CTLR_ENABLE_LPIS;
 	sys_write32(ctlr, rdist + GICR_CTLR);
 
-	dsb();
+	barrier_dsync_fence_full();
 }
 #endif
 
@@ -506,6 +528,20 @@ static bool arm_gic_aff_matching(uint64_t gicr_aff, uint64_t aff)
 #endif
 }
 
+static inline uint64_t arm_gic_get_typer(mem_addr_t addr)
+{
+	uint64_t val;
+
+#if defined(CONFIG_ARM)
+	val = sys_read32(addr);
+	val |= (uint64_t)sys_read32(addr + 4) << 32;
+#else
+	val = sys_read64(addr);
+#endif
+
+	return val;
+}
+
 static mem_addr_t arm_gic_iterate_rdists(void)
 {
 	uint64_t aff = arm_gic_mpidr_to_affinity(GET_MPIDR());
@@ -513,7 +549,7 @@ static mem_addr_t arm_gic_iterate_rdists(void)
 	for (mem_addr_t rdist_addr = GIC_RDIST_BASE;
 		rdist_addr < GIC_RDIST_BASE + GIC_RDIST_SIZE;
 		rdist_addr += 0x20000) {
-		uint64_t val = sys_read64(rdist_addr + GICR_TYPER);
+		uint64_t val = arm_gic_get_typer(rdist_addr + GICR_TYPER);
 		uint64_t gicr_aff = GICR_TYPER_AFFINITY_VALUE_GET(val);
 
 		if (arm_gic_aff_matching(gicr_aff, aff)) {
@@ -549,9 +585,8 @@ static void __arm_gic_init(void)
 	gicv3_cpuif_init();
 }
 
-int arm_gic_init(const struct device *unused)
+int arm_gic_init(void)
 {
-	ARG_UNUSED(unused);
 
 	gicv3_dist_init();
 

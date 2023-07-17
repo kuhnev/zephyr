@@ -124,9 +124,9 @@ static void stm32_i2c_slave_event(const struct device *dev)
 
 	/* Choose the right slave from the address match code */
 	slave_address = LL_I2C_GetAddressMatchCode(i2c) >> 1;
-	if (slave_address == data->slave_cfg->address) {
+	if (data->slave_cfg != NULL && slave_address == data->slave_cfg->address) {
 		slave_cfg = data->slave_cfg;
-	} else if (slave_address == data->slave2_cfg->address) {
+	} else if (data->slave2_cfg != NULL && slave_address == data->slave2_cfg->address) {
 		slave_cfg = data->slave2_cfg;
 	} else {
 		__ASSERT_NO_MSG(0);
@@ -224,19 +224,27 @@ int i2c_stm32_target_register(const struct device *dev,
 
 	if (!data->slave_cfg) {
 		data->slave_cfg = config;
+		if (data->slave_cfg->flags == I2C_TARGET_FLAGS_ADDR_10_BITS)	{
+			LL_I2C_SetOwnAddress1(i2c, config->address, LL_I2C_OWNADDRESS1_10BIT);
+			LOG_DBG("i2c: target #1 registered with 10-bit address");
+		} else {
+			LL_I2C_SetOwnAddress1(i2c, config->address << 1U, LL_I2C_OWNADDRESS1_7BIT);
+			LOG_DBG("i2c: target #1 registered with 7-bit address");
+		}
 
-		LL_I2C_SetOwnAddress1(i2c, config->address << 1U,
-				      LL_I2C_OWNADDRESS1_7BIT);
 		LL_I2C_EnableOwnAddress1(i2c);
 
-		LOG_DBG("i2c: slave #1 registered");
+		LOG_DBG("i2c: target #1 registered");
 	} else {
 		data->slave2_cfg = config;
 
+		if (data->slave2_cfg->flags == I2C_TARGET_FLAGS_ADDR_10_BITS)	{
+			return -EINVAL;
+		}
 		LL_I2C_SetOwnAddress2(i2c, config->address << 1U,
 				      LL_I2C_OWNADDRESS2_NOMASK);
 		LL_I2C_EnableOwnAddress2(i2c);
-		LOG_DBG("i2c: slave #2 registered");
+		LOG_DBG("i2c: target #2 registered");
 	}
 
 	data->slave_attached = true;
@@ -276,7 +284,8 @@ int i2c_stm32_target_unregister(const struct device *dev,
 	}
 
 	/* Return if there is a slave remaining */
-	if (!data->slave_cfg || !data->slave2_cfg) {
+	if (data->slave_cfg || data->slave2_cfg) {
+		LOG_DBG("i2c: target#%c still registered", data->slave_cfg?'1':'2');
 		return 0;
 	}
 

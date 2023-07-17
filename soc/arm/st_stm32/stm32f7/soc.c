@@ -15,6 +15,8 @@
 #include <soc.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/arch/arm/aarch32/nmi.h>
+#include <zephyr/irq.h>
 #include <stm32_ll_system.h>
 
 /**
@@ -25,11 +27,10 @@
  *
  * @return 0
  */
-static int st_stm32f7_init(const struct device *arg)
+static int st_stm32f7_init(void)
 {
 	uint32_t key;
 
-	ARG_UNUSED(arg);
 
 	/* Enable ART Flash cache accelerator */
 	LL_FLASH_EnableART();

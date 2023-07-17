@@ -16,7 +16,8 @@
 #include <stm32_ll_icache.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
-
+#include <zephyr/arch/arm/aarch32/nmi.h>
+#include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 
 #define LOG_LEVEL CONFIG_SOC_LOG_LEVEL
@@ -30,11 +31,10 @@ LOG_MODULE_REGISTER(soc);
  *
  * @return 0
  */
-static int stm32u5_init(const struct device *arg)
+static int stm32u5_init(void)
 {
 	uint32_t key;
 
-	ARG_UNUSED(arg);
 
 	key = irq_lock();
 
@@ -58,6 +58,15 @@ static int stm32u5_init(const struct device *arg)
 
 	/* Disable USB Type-C dead battery pull-down behavior */
 	LL_PWR_DisableUCPDDeadBattery();
+
+	/* Power Configuration */
+#if defined(CONFIG_POWER_SUPPLY_DIRECT_SMPS)
+	LL_PWR_SetRegulatorSupply(LL_PWR_SMPS_SUPPLY);
+#elif defined(CONFIG_POWER_SUPPLY_LDO)
+	LL_PWR_SetRegulatorSupply(LL_PWR_LDO_SUPPLY);
+#else
+#error "Unsupported power configuration"
+#endif
 
 	return 0;
 }

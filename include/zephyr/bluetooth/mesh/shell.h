@@ -27,8 +27,6 @@ extern "C" {
 
 /** Target context for the mesh shell */
 struct bt_mesh_shell_target {
-	/* Local address of the device */
-	uint16_t local;
 	/* Current destination address */
 	uint16_t dst;
 	/* Current net index */
@@ -42,6 +40,21 @@ extern struct bt_mesh_health_srv bt_mesh_shell_health_srv;
 
 /** @brief External reference to health client */
 extern struct bt_mesh_health_cli bt_mesh_shell_health_cli;
+
+/** @brief External reference to Firmware Update Server */
+extern struct bt_mesh_dfu_srv bt_mesh_shell_dfu_srv;
+
+/** @brief External reference to Firmware Update Client */
+extern struct bt_mesh_dfu_cli bt_mesh_shell_dfu_cli;
+
+/** @brief External reference to BLOB Transfer Server */
+extern struct bt_mesh_blob_srv bt_mesh_shell_blob_srv;
+
+/** @brief External reference to BLOB Transfer Client */
+extern struct bt_mesh_blob_cli bt_mesh_shell_blob_cli;
+
+/** @brief External reference to Remote Provisioning Client */
+extern struct bt_mesh_rpr_cli bt_mesh_shell_rpr_cli;
 
 /** @brief External reference to provisioning handler. */
 extern struct bt_mesh_prov bt_mesh_shell_prov;

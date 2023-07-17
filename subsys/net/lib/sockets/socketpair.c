@@ -4,14 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <fcntl.h>
-
-/* Zephyr headers */
-#include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(net_spair, CONFIG_NET_SOCKETS_LOG_LEVEL);
-
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/posix/fcntl.h>
 #include <zephyr/syscall_handler.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sys/fdtable.h>
@@ -460,6 +455,11 @@ static ssize_t spair_write(void *obj, const void *buffer, size_t count)
 	}
 
 	if (will_block) {
+		if (k_is_in_isr()) {
+			errno = EAGAIN;
+			res = -1;
+			goto out;
+		}
 
 		for (int signaled = false, result = -1; !signaled;
 			result = -1) {
@@ -646,6 +646,11 @@ static ssize_t spair_read(void *obj, void *buffer, size_t count)
 	}
 
 	if (will_block) {
+		if (k_is_in_isr()) {
+			errno = EAGAIN;
+			res = -1;
+			goto out;
+		}
 
 		for (int signaled = false, result = -1; !signaled;
 			result = -1) {

@@ -6,32 +6,70 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/check.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/pm/pm.h>
 
 #include <soc.h>
-#include <ace_v1x-regs.h>
+#include <adsp_boot.h>
+#include <adsp_power.h>
 #include <adsp_ipc_regs.h>
 #include <adsp_memory.h>
+#include <adsp_interrupt.h>
+#include <zephyr/irq.h>
+#include <zephyr/cache.h>
 
-#define CORE_POWER_CHECK_NUM 32
+#define CORE_POWER_CHECK_NUM 128
+#define ACE_INTC_IRQ DT_IRQN(DT_NODELABEL(ace_intc))
 
 static void ipc_isr(void *arg)
 {
-	IDC[arch_proc_id()].agents[0].ipc.tdr = BIT(31); /* clear BUSY bit */
+	uint32_t cpu_id = arch_proc_id();
+
+	/*
+	 * Clearing the BUSY bits in both TDR and TDA are needed to
+	 * complete an IDC message. If we do only one (and not both),
+	 * the other side will not be able to send another IDC
+	 * message as the hardware still thinks you are processing
+	 * the IDC message (and thus will not send another one).
+	 * On TDR, it is to write one to clear, while on TDA, it is
+	 * to write zero to clear.
+	 */
+	IDC[cpu_id].agents[0].ipc.tdr = BIT(31);
+	IDC[cpu_id].agents[0].ipc.tda = 0;
+
 #ifdef CONFIG_SMP
 	void z_sched_ipi(void);
 	z_sched_ipi();
 #endif
 }
 
+#define DFIDCCP			0x2020
+#define CAP_INST_SHIFT		24
+#define CAP_INST_MASK		BIT_MASK(4)
+
+unsigned int soc_num_cpus;
+
+static __imr int soc_num_cpus_init(void)
+{
+	/* Need to set soc_num_cpus early to arch_num_cpus() works properly */
+	soc_num_cpus = ((sys_read32(DFIDCCP) >> CAP_INST_SHIFT) & CAP_INST_MASK) + 1;
+	soc_num_cpus = MIN(CONFIG_MP_MAX_NUM_CPUS, soc_num_cpus);
+
+	return 0;
+}
+SYS_INIT(soc_num_cpus_init, EARLY, 1);
+
 void soc_mp_init(void)
 {
-	IRQ_CONNECT(MTL_IRQ_TO_ZEPHYR(MTL_INTL_IDCA), 0, ipc_isr, 0, 0);
+	IRQ_CONNECT(ACE_IRQ_TO_ZEPHYR(ACE_INTL_IDCA), 0, ipc_isr, 0, 0);
 
-	irq_enable(MTL_IRQ_TO_ZEPHYR(MTL_INTL_IDCA));
+	irq_enable(ACE_IRQ_TO_ZEPHYR(ACE_INTL_IDCA));
 
-	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (int i = 0; i < num_cpus; i++) {
 		/* DINT has one bit per IPC, unmask only IPC "Ax" on core "x" */
-		MTL_DINT[i].ie[MTL_INTL_IDCA] = BIT(i);
+		ACE_DINT[i].ie[ACE_INTL_IDCA] = BIT(i);
 
 		/* Agent A should signal only BUSY interrupts */
 		IDC[i].agents[0].ipc.ctl = BIT(0); /* IPCTBIE */
@@ -48,8 +86,24 @@ void soc_start_core(int cpu_num)
 	if (cpu_num > 0) {
 		/* Initialize the ROM jump address */
 		uint32_t *rom_jump_vector = (uint32_t *) ROM_JUMP_ADDR;
+#if CONFIG_PM
+		extern void dsp_restore_vector(void);
+
+		/* We need to find out what type of booting is taking place here. Secondary cores
+		 * can be disabled and enabled multiple times during runtime. During kernel
+		 * initialization, the next pm state is set to ACTIVE. This way we can determine
+		 * whether the core is being turned on again or for the first time.
+		 */
+		if (pm_state_next_get(cpu_num)->state == PM_STATE_ACTIVE) {
+			*rom_jump_vector = (uint32_t) z_soc_mp_asm_entry;
+		} else {
+			*rom_jump_vector = (uint32_t) dsp_restore_vector;
+		}
+#else
 		*rom_jump_vector = (uint32_t) z_soc_mp_asm_entry;
-		z_xtensa_cache_flush(rom_jump_vector, sizeof(*rom_jump_vector));
+#endif
+
+		sys_cache_data_flush_range(rom_jump_vector, sizeof(*rom_jump_vector));
 		ACE_PWRCTL->wpdsphpxpg |= BIT(cpu_num);
 
 		while ((ACE_PWRSTS->dsphpxpgs & BIT(cpu_num)) == 0) {
@@ -57,17 +111,30 @@ void soc_start_core(int cpu_num)
 		}
 
 		/* Tell the ACE ROM that it should use secondary core flow */
-		DFDSPBRCP.bootctl[cpu_num].battr |= DFDSPBRCP_BATTR_LPSCTL_BATTR_SLAVE_CORE;
+		DSPCS.bootctl[cpu_num].battr |= DSPBR_BATTR_LPSCTL_BATTR_SLAVE_CORE;
 	}
 
-	DFDSPBRCP.capctl[cpu_num].ctl |= DFDSPBRCP_CTL_SPA;
+	/* Setting the Power Active bit to the off state before powering up the core. This step is
+	 * required by the HW if we are starting core for a second time. Without this sequence, the
+	 * core will not power on properly when doing transition D0->D3->D0.
+	 */
+	DSPCS.capctl[cpu_num].ctl &= ~DSPCS_CTL_SPA;
 
-	/* Waiting for power up */
-	while (~(DFDSPBRCP.capctl[cpu_num].ctl & DFDSPBRCP_CTL_CPA) && --retry) {
+	/* Checking current power status of the core. */
+	while (((DSPCS.capctl[cpu_num].ctl & DSPCS_CTL_CPA) == DSPCS_CTL_CPA)) {
 		k_busy_wait(HW_STATE_CHECK_DELAY);
 	}
 
-	if (!retry) {
+	DSPCS.capctl[cpu_num].ctl |= DSPCS_CTL_SPA;
+
+	/* Waiting for power up */
+	while (((DSPCS.capctl[cpu_num].ctl & DSPCS_CTL_CPA) != DSPCS_CTL_CPA) &&
+	       (retry > 0)) {
+		k_busy_wait(HW_STATE_CHECK_DELAY);
+		retry--;
+	}
+
+	if (retry == 0) {
 		__ASSERT(false, "%s secondary core has not powered up", __func__);
 	}
 }
@@ -78,13 +145,8 @@ void soc_mp_startup(uint32_t cpu)
 	z_xtensa_irq_enable(ACE_INTC_IRQ);
 
 	/* Prevent idle from powering us off */
-	DFDSPBRCP.bootctl[cpu].bctl |=
-		DFDSPBRCP_BCTL_WAITIPCG | DFDSPBRCP_BCTL_WAITIPPG;
-	/* checking if WDT was stopped during D3 transition */
-	if (DFDSPBRCP.bootctl[cpu].wdtcs & DFDSPBRCP_WDT_RESUME) {
-		DFDSPBRCP.bootctl[cpu].wdtcs = DFDSPBRCP_WDT_RESUME;
-		/* TODO: delete this IF when FW starts using imr restore vector */
-	}
+	DSPCS.bootctl[cpu].bctl |=
+		DSPBR_BCTL_WAITIPCG | DSPBR_BCTL_WAITIPPG;
 }
 
 void arch_sched_ipi(void)
@@ -92,13 +154,16 @@ void arch_sched_ipi(void)
 	uint32_t curr = arch_proc_id();
 
 	/* Signal agent B[n] to cause an interrupt from agent A[n] */
-	for (int core = 0; core < CONFIG_MP_NUM_CPUS; core++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (int core = 0; core < num_cpus; core++) {
 		if (core != curr && soc_cpus_active[core]) {
 			IDC[core].agents[1].ipc.idr = INTEL_ADSP_IPC_BUSY;
 		}
 	}
 }
 
+#if CONFIG_MP_MAX_NUM_CPUS > 1
 int soc_adsp_halt_cpu(int id)
 {
 	int retry = CORE_POWER_CHECK_NUM;
@@ -107,7 +172,7 @@ int soc_adsp_halt_cpu(int id)
 		return -EINVAL;
 	}
 
-	CHECKIF(id <= 0 || id >= CONFIG_MP_NUM_CPUS) {
+	CHECKIF(id <= 0 || id >= arch_num_cpus()) {
 		return -EINVAL;
 	}
 
@@ -115,16 +180,21 @@ int soc_adsp_halt_cpu(int id)
 		return -EINVAL;
 	}
 
-	DFDSPBRCP.capctl[id].ctl &= ~DFDSPBRCP_CTL_SPA;
+	DSPCS.capctl[id].ctl &= ~DSPCS_CTL_SPA;
 
 	/* Waiting for power off */
-	while (DFDSPBRCP.capctl[id].ctl & DFDSPBRCP_CTL_CPA && --retry)
+	while (((DSPCS.capctl[id].ctl & DSPCS_CTL_CPA) == DSPCS_CTL_CPA) &&
+	       (retry > 0)) {
 		k_busy_wait(HW_STATE_CHECK_DELAY);
+		retry--;
+	}
 
-	if (!retry) {
+	if (retry == 0) {
 		__ASSERT(false, "%s secondary core has not powered down", __func__);
 		return -EINVAL;
 	}
 
+	ACE_PWRCTL->wpdsphpxpg &= ~BIT(id);
 	return 0;
 }
+#endif

@@ -51,8 +51,9 @@
 #error "Define a PWM device"
 #endif
 
-#if defined(CONFIG_BOARD_COLIBRI_IMX7D_M4) || defined(CONFIG_SOC_MK64F12) || \
-	defined(CONFIG_SOC_MKW41Z4)
+#if defined(CONFIG_BOARD_COLIBRI_IMX7D_M4) || defined(CONFIG_SOC_MK64F12) ||                       \
+	defined(CONFIG_SOC_MKW41Z4) || defined(CONFIG_SOC_ESP32S2) ||                              \
+	defined(CONFIG_SOC_ESP32S3) || defined(CONFIG_SOC_ESP32C3)
 #define DEFAULT_PERIOD_CYCLE 1024
 #define DEFAULT_PULSE_CYCLE 512
 #define DEFAULT_PERIOD_NSEC 2000000
@@ -126,7 +127,7 @@ static int test_task(uint32_t port, uint32_t period, uint32_t pulse, uint8_t uni
 	return TC_PASS;
 }
 
-void test_pwm_nsec(void)
+ZTEST_USER(pwm_basic, test_pwm_nsec)
 {
 	/* Period : Pulse (2000000 : 1000000), unit (nsec). Voltage : 1.65V */
 	zassert_true(test_task(DEFAULT_PWM_PORT, DEFAULT_PERIOD_NSEC,
@@ -144,7 +145,7 @@ void test_pwm_nsec(void)
 	k_sleep(K_MSEC(1000));
 }
 
-void test_pwm_cycle(void)
+ZTEST_USER(pwm_basic, test_pwm_cycle)
 {
 	/* Period : Pulse (64000 : 32000), unit (cycle). Voltage : 1.65V */
 	zassert_true(test_task(DEFAULT_PWM_PORT, DEFAULT_PERIOD_CYCLE,
@@ -159,4 +160,5 @@ void test_pwm_cycle(void)
 	/* Period : Pulse (64000 : 0), unit (cycle). Voltage : 0V */
 	zassert_true(test_task(DEFAULT_PWM_PORT, DEFAULT_PERIOD_CYCLE,
 				0, UNIT_CYCLES) == TC_PASS, NULL);
+	k_sleep(K_MSEC(1000));
 }
