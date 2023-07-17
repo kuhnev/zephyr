@@ -259,7 +259,7 @@ manifest:
       revision: ca583fd297ceb48bced3c2548600dc615d67af24
     - name: loramac-node
       remote: kuhnev
-      revision: v4.7.0-mcast-fnc-reset
+      revision: v4.7.0-zephyr
       path: modules/lib/loramac-node
     - name: lvgl
       revision: 7102083f626cda09e5792420ea60af0525cce9ae
