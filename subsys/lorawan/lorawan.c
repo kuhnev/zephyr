@@ -436,6 +436,33 @@ out:
 	return ret;
 }
 
+bool lorawan_is_activated(void)
+{
+	MibRequestConfirm_t mib_req;
+	bool is_activated = false;
+
+	mib_req.Type = MIB_NETWORK_ACTIVATION;
+	LoRaMacMibGetRequestConfirm(&mib_req);
+
+	switch(mib_req.Param.NetworkActivation)
+	{
+		case ACTIVATION_TYPE_NONE:
+			is_activated = false;
+			break;
+		case ACTIVATION_TYPE_ABP:
+			is_activated = true;
+			break;
+		case ACTIVATION_TYPE_OTAA:
+			is_activated = true;
+			break;
+		default:
+			is_activated = false;
+			break;
+	}
+
+	return is_activated;
+}
+
 int lorawan_set_class(enum lorawan_class dev_class)
 {
 	MibRequestConfirm_t mib_req;
@@ -470,6 +497,33 @@ int lorawan_set_class(enum lorawan_class dev_class)
 	}
 
 	return 0;
+}
+
+enum lorawan_class lorawan_get_class(void)
+{
+	MibRequestConfirm_t mib_req;
+	enum lorawan_class current_class;
+
+	mib_req.Type = MIB_DEVICE_CLASS;
+	LoRaMacMibGetRequestConfirm(&mib_req);
+
+	switch(mib_req.Param.Class)
+	{
+		case CLASS_A:
+			current_class = LORAWAN_CLASS_A;
+			break;
+		case CLASS_B:
+			current_class = LORAWAN_CLASS_B;
+			break;
+		case CLASS_C:
+			current_class = LORAWAN_CLASS_C;
+			break;
+		default:
+			current_class = LORAWAN_CLASS_A;
+			break;
+	}
+
+	return current_class;
 }
 
 int lorawan_set_datarate(enum lorawan_datarate dr)

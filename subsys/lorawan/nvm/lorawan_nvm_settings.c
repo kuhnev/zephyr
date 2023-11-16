@@ -140,6 +140,20 @@ static int on_setting_loaded(const char *key, size_t len,
 	return 0;
 }
 
+static void fix_downlink_pointer_address(LoRaMacNvmData_t* nvm)
+{
+	if (nvm == NULL)
+	{
+		return;
+	}
+
+	for( int32_t i = 0; i < LORAMAC_MAX_MC_CTX; i++ )
+	{
+		nvm->MacGroup2.MulticastChannelList[i].DownLinkCounter = 
+				&nvm->Crypto.FCntList.McFCntDown[i];
+	}
+}
+
 int lorawan_nvm_data_restore(void)
 {
 	int err;
@@ -167,6 +181,10 @@ int lorawan_nvm_data_restore(void)
 		mib_req.Param.Contexts->Crypto.LrWanVersion.Value,
 		mib_req.Param.Contexts->Crypto.DevNonce,
 		mib_req.Param.Contexts->Crypto.JoinNonce);
+
+	/* When firmware update happens some pointers stored in non volatile
+	memory might no longer be valid, so update them back to proper objects */
+	fix_downlink_pointer_address(mib_req.Param.Contexts);
 
 	mib_req.Type = MIB_NVM_CTXS;
 	status = LoRaMacMibSetRequestConfirm(&mib_req);
