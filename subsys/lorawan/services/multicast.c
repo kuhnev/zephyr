@@ -407,15 +407,7 @@ int lorawan_local_multicast_setup(const struct lorawan_local_mcast_group *group_
 {
 	if (group_cfg && (id < LORAMAC_MAX_MC_CTX))
 	{
-		LoRaMacStatus_t ret = multicast_group_delete_remote(id);
-
-		if (ret == LORAMAC_STATUS_OK)
-		{
-			multicast_settings_store(id);
-			
-			ret = multicast_group_setup_local(group_cfg, id);
-		}
-
+		LoRaMacStatus_t ret = multicast_group_setup_local(group_cfg, id);
 		return lorawan_status2errno(ret);
 	}
 
