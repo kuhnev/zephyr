@@ -38,6 +38,7 @@ BUILD_ASSERT(DT_NUM_INST_STATUS_OKAY(semtech_sx1261) +
 #endif
 
 #define SX126X_CALIBRATION_ALL 0x7f
+#define SX126X_BUSY_IN_SLEEP_TIMEOUT 3000
 
 static const struct sx126x_config dev_config = {
 	.bus = SPI_DT_SPEC_INST_GET(0, SPI_WORD_SET(8) | SPI_TRANSFER_MSB, 0),
@@ -364,8 +365,18 @@ void SX126xSetRfTxPower(int8_t power)
 
 void SX126xWaitOnBusy(void)
 {
-	while (sx126x_is_busy(&dev_data)) {
+	uint32_t cnt = 0;
+
+	while (sx126x_is_busy(&dev_data)) 
+	{
 		k_sleep(K_MSEC(1));
+		++cnt;
+
+		if ((cnt >= SX126X_BUSY_IN_SLEEP_TIMEOUT) && 
+			(dev_data.mode  == MODE_SLEEP))
+		{
+			break;
+		}
 	}
 }
 
