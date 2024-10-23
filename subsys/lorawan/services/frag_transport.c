@@ -85,7 +85,7 @@ frag_dec_t decoder;
 static uint8_t dec_buf[DEC_BUF_SIZE];
 
 /* Callback for notification of finished firmware transfer */
-static void (*finished_cb)(void);
+static void (*finished_cb)(uint32_t, size_t);
 
 static void frag_transport_package_callback(uint8_t port, bool data_pending, int16_t rssi,
 					    int8_t snr, uint8_t len, const uint8_t *rx_buf)
@@ -278,7 +278,8 @@ static void frag_transport_package_callback(uint8_t port, bool data_pending, int
 				frag_flash_finish();
 
 				if (finished_cb != NULL) {
-					finished_cb();
+					size_t image_size = (size_t)ctx[index].nb_frag * ctx[index].frag_size + ctx[index].padding;
+					finished_cb(ctx[index].descriptor, image_size);
 				}
 			}
 
@@ -301,7 +302,7 @@ static struct lorawan_downlink_cb downlink_cb = {
 	.cb = frag_transport_package_callback
 };
 
-int lorawan_frag_transport_run(void (*transport_finished_cb)(void))
+int lorawan_frag_transport_run(void (*transport_finished_cb)(uint32_t, size_t))
 {
 	workq = lorawan_services_get_work_queue();
 	finished_cb = transport_finished_cb;

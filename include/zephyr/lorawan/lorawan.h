@@ -369,11 +369,12 @@ int lorawan_clock_sync_get(uint32_t *gps_time);
  * This service receives fragmented data (usually firmware images) and
  * stores them in the image-1 flash partition.
  *
- * After all fragments have been received, the provided callback is invoked.
+ * After all fragments have been received, the provided callback is invoked with 
+ * fragmented data descriptor and size of received image.
  *
  * @param transport_finished_cb Callback for notification of finished data transfer.
  */
-int lorawan_frag_transport_run(void (*transport_finished_cb)(void));
+int lorawan_frag_transport_run(void (*transport_finished_cb)(uint32_t, size_t));
 
 #endif /* CONFIG_LORAWAN_FRAG_TRANSPORT */
 
